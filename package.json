@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "generate": "node scripts/generate-parser.js",
+    "generate": "java -jar antlr-4.13.1-complete.jar -Dlanguage=JavaScript -visitor -no-listener -Xexact-output-dir -o src/generated grammar/JsonQuery.g4",
     "start": "node src/index.js",
     "tui": "node src/tui/app.js"
   },
