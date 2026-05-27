@@ -59,17 +59,17 @@ limitClause
     : LIMIT INTEGER_LIT
     ;
 
-// Priorytety operatorów zakodowane kolejnością alternatyw
-// (pierwsza = najniższy priorytet, ostatnia = najwyższy)
+// Priorytety operatorów: w ANTLR4 dla reguł lewostronnie
+// rekurencyjnych PIERWSZA alternatywa = NAJWYŻSZY priorytet.
 expr
-    : expr OR  expr                         # OrExpr
-    | expr AND expr                         # AndExpr
-    | NOT expr                              # NotExpr
-    | expr compOp expr                      # CompareExpr
-    | expr (PLUS  | MINUS) expr             # AddExpr
-    | expr (STAR  | SLASH) expr             # MulExpr
+    : primary                               # PrimaryExpr
     | MINUS expr                            # UnaryMinus
-    | primary                               # PrimaryExpr
+    | expr (STAR  | SLASH) expr             # MulExpr
+    | expr (PLUS  | MINUS) expr             # AddExpr
+    | expr compOp expr                      # CompareExpr
+    | NOT expr                              # NotExpr
+    | expr AND expr                         # AndExpr
+    | expr OR  expr                         # OrExpr
     ;
 
 primary

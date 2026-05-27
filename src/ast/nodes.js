@@ -1,0 +1,139 @@
+// ──────────────────────────────────────────────
+// AST Node Classes for JsonQuery
+// ──────────────────────────────────────────────
+
+export class ProgramNode {
+  constructor(queries, loc) {
+    this.type = 'Program';
+    this.queries = queries;
+    this.loc = loc;
+  }
+}
+
+export class QueryNode {
+  constructor({ select, from, join, unnest, where, orderBy, limit, loc }) {
+    this.type = 'Query';
+    this.select = select;       // SelectAllNode | [SelectItemNode]
+    this.from = from;           // SourceNode
+    this.join = join || null;   // JoinNode | null
+    this.unnest = unnest || []; // [UnnestNode]
+    this.where = where || null; // ExprNode | null
+    this.orderBy = orderBy || []; // [OrderItemNode]
+    this.limit = limit;         // number | null
+    this.loc = loc;
+  }
+}
+
+export class SelectAllNode {
+  constructor(loc) {
+    this.type = 'SelectAll';
+    this.loc = loc;
+  }
+}
+
+export class SelectItemNode {
+  constructor(expr, alias, loc) {
+    this.type = 'SelectItem';
+    this.expr = expr;
+    this.alias = alias || null;
+    this.loc = loc;
+  }
+}
+
+export class SourceNode {
+  constructor(name, alias, loc) {
+    this.type = 'Source';
+    this.name = name;
+    this.alias = alias || null;
+    this.loc = loc;
+  }
+}
+
+export class JoinNode {
+  constructor(source, alias, condition, loc) {
+    this.type = 'Join';
+    this.source = source;
+    this.alias = alias || null;
+    this.condition = condition;
+    this.loc = loc;
+  }
+}
+
+export class UnnestNode {
+  constructor(path, alias, loc) {
+    this.type = 'Unnest';
+    this.path = path;
+    this.alias = alias;
+    this.loc = loc;
+  }
+}
+
+export class BinaryExprNode {
+  constructor(op, left, right, loc) {
+    this.type = 'BinaryExpr';
+    this.op = op;
+    this.left = left;
+    this.right = right;
+    this.loc = loc;
+  }
+}
+
+export class UnaryExprNode {
+  constructor(op, operand, loc) {
+    this.type = 'UnaryExpr';
+    this.op = op;
+    this.operand = operand;
+    this.loc = loc;
+  }
+}
+
+export class AggregateNode {
+  constructor(func, path, loc) {
+    this.type = 'Aggregate';
+    this.func = func;   // 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX'
+    this.path = path;
+    this.loc = loc;
+  }
+}
+
+export class PathNode {
+  constructor(segments, loc) {
+    this.type = 'Path';
+    this.segments = segments; // ['address', 'city']
+    this.loc = loc;
+  }
+
+  toString() {
+    return this.segments.join('.');
+  }
+}
+
+export class LiteralNode {
+  constructor(value, dataType, loc) {
+    this.type = 'Literal';
+    this.value = value;
+    this.dataType = dataType; // 'integer' | 'float' | 'string' | 'boolean' | 'null'
+    this.loc = loc;
+  }
+}
+
+export class OrderItemNode {
+  constructor(path, direction, loc) {
+    this.type = 'OrderItem';
+    this.path = path;
+    this.direction = direction; // 'ASC' | 'DESC'
+    this.loc = loc;
+  }
+}
+
+/**
+ * Helper: extract location info from an ANTLR4 context or token
+ */
+export function locFrom(ctx) {
+  if (!ctx) return null;
+  const token = ctx.start || ctx.symbol || ctx;
+  return {
+    line: token.line,
+    column: token.column,
+  };
+}

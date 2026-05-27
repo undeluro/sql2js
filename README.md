@@ -234,17 +234,17 @@ limitClause
     : LIMIT INTEGER_LIT
     ;
 
-// Priorytety operatorów zakodowane kolejnością alternatyw
-// (pierwsza = najniższy priorytet, ostatnia = najwyższy)
+// Priorytety operatorów: w ANTLR4 dla reguł lewostronnie
+// rekurencyjnych PIERWSZA alternatywa = NAJWYŻSZY priorytet.
 expr
-    : expr OR  expr                         # OrExpr
-    | expr AND expr                         # AndExpr
-    | NOT expr                              # NotExpr
-    | expr compOp expr                      # CompareExpr
-    | expr (PLUS  | MINUS) expr             # AddExpr
-    | expr (STAR  | SLASH) expr             # MulExpr
+    : primary                               # PrimaryExpr
     | MINUS expr                            # UnaryMinus
-    | primary                               # PrimaryExpr
+    | expr (STAR  | SLASH) expr             # MulExpr
+    | expr (PLUS  | MINUS) expr             # AddExpr
+    | expr compOp expr                      # CompareExpr
+    | NOT expr                              # NotExpr
+    | expr AND expr                         # AndExpr
+    | expr OR  expr                         # OrExpr
     ;
 
 primary
@@ -305,10 +305,10 @@ BOOLEAN_LIT : [Tt][Rr][Uu][Ee] | [Ff][Aa][Ll][Ss][Ee] ;
 
 IDENTIFIER  : [a-zA-Z_] [a-zA-Z_0-9]* ;
 
-INTEGER_LIT : [0-9]+ ;
 FLOAT_LIT   : [0-9]+ '.' [0-9]* | '.' [0-9]+ ;
-STRING_LIT  : '"'  ( ~["\\\r\n] | '\\' . )* '"'
-            | '\'' ( ~['\\\r\n] | '\\' . )* '\''
+INTEGER_LIT : [0-9]+ ;
+STRING_LIT  : '"'  ( ~["\\] | '\\' . )* '"'
+            | '\'' ( ~['\\] | '\\' . )* '\''
             ;
 
 // Operatory (wieloznakowe przed jednoznakowymi)
@@ -335,4 +335,56 @@ LINE_COMMENT : '--' ~[\r\n]* -> skip ;
 | 6 | `*` `/` | lewostronna |
 | 7 | unarny `-` | prawostronna (prefiks) |
 | 8 (najwyższy) | `COUNT(...)`, ścieżka, literał, `(...)` | — |
+
+---
+
+## Instalacja i uruchomienie
+
+### Wymagania
+- Node.js ≥ 18
+- Java (do generacji parsera z ANTLR4)
+
+### Instalacja
+```bash
+# Zainstaluj zależności
+npm install
+
+# Wygeneruj lexer/parser z gramatyki (wymaga Java)
+java -jar antlr-4.13.1-complete.jar -Dlanguage=JavaScript -visitor -no-listener -o src/generated grammar/JsonQuery.g4
+```
+
+### Tryb interaktywny (TUI)
+```bash
+# Z podaniem pliku danych
+node src/index.js -d data/users.json
+
+# Bez pliku — TUI poprosi o ścieżkę
+node src/index.js
+```
+
+### Tryb jednorazowy
+```bash
+# Wykonaj zapytanie i wydrukuj wynik jako JSON
+node src/index.js -e "SELECT name, age FROM users WHERE age > 18;" -d data/users.json
+
+# Z JOIN
+node src/index.js -e "SELECT u.name, o.product FROM users AS u JOIN orders AS o ON u.id = o.userId;" -d data/users.json -j data/orders.json
+```
+
+### Pomoc
+```bash
+node src/index.js --help
+```
+
+---
+
+## Użyte technologie
+
+| Komponent | Technologia |
+|---|---|
+| Generator parsera | ANTLR4 |
+| Język implementacji | JavaScript (ESM) |
+| Runtime | Node.js |
+| TUI | Ink (React for terminals) |
+| Kolory terminala | chalk |
 
