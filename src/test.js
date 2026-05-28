@@ -1,6 +1,4 @@
-// ──────────────────────────────────────────────
 // Quick test script — verify the pipeline works
-// ──────────────────────────────────────────────
 
 import { compile, compileAndExecute } from './pipeline.js';
 import { resolve, dirname } from 'node:path';
@@ -42,7 +40,7 @@ function test(name, query, dataFile = 'users.json') {
   return true;
 }
 
-// ── Run tests ───────────────────────────────
+// ── Run tests ──
 
 let passed = 0;
 let total = 0;

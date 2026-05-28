@@ -155,18 +155,40 @@ export default class CodeGenerator {
   }
 
   _aggregateToJS(expr, rowVar) {
-    const arrPath = this._pathToAccessor(expr.path, rowVar);
+    const segments = expr.path.segments;
+
+    // For multi-segment paths like orders.total:
+    //   arrExpr  = row.orders (the array)
+    //   valExpr  = .map(__el => __el.total) (extract sub-field)
+    // For single-segment paths like orders:
+    //   arrExpr  = row.orders (the array itself)
+    //   valExpr  = (identity — array elements are the values)
+    const arrRoot = `${rowVar}.${segments[0]}`;
+    const needsMap = segments.length > 1;
+    const subPath = segments.slice(1).join('?.');
+    const valuesExpr = needsMap
+      ? `${arrRoot}.map(__el => __el?.${subPath})`
+      : arrRoot;
+
     switch (expr.func) {
       case 'COUNT':
-        return `(Array.isArray(${arrPath}) ? ${arrPath}.length : 0)`;
-      case 'SUM':
-        return `(Array.isArray(${arrPath}) ? ${arrPath}.reduce((s, v) => s + (typeof v === 'object' ? 0 : Number(v)), 0) : 0)`;
-      case 'AVG':
-        return `(Array.isArray(${arrPath}) && ${arrPath}.length ? ${arrPath}.reduce((s, v) => s + Number(v), 0) / ${arrPath}.length : 0)`;
-      case 'MIN':
-        return `(Array.isArray(${arrPath}) && ${arrPath}.length ? Math.min(...${arrPath}.map(Number)) : null)`;
-      case 'MAX':
-        return `(Array.isArray(${arrPath}) && ${arrPath}.length ? Math.max(...${arrPath}.map(Number)) : null)`;
+        return `(Array.isArray(${arrRoot}) ? ${arrRoot}.length : 0)`;
+      case 'SUM': {
+        const src = needsMap ? valuesExpr : arrRoot;
+        return `(Array.isArray(${arrRoot}) ? ${src}.reduce((__s, __v) => __s + Number(__v || 0), 0) : 0)`;
+      }
+      case 'AVG': {
+        const src = needsMap ? valuesExpr : arrRoot;
+        return `(Array.isArray(${arrRoot}) && ${arrRoot}.length ? ${src}.reduce((__s, __v) => __s + Number(__v || 0), 0) / ${arrRoot}.length : 0)`;
+      }
+      case 'MIN': {
+        const src = needsMap ? valuesExpr : arrRoot;
+        return `(Array.isArray(${arrRoot}) && ${arrRoot}.length ? Math.min(...${src}.map(Number)) : null)`;
+      }
+      case 'MAX': {
+        const src = needsMap ? valuesExpr : arrRoot;
+        return `(Array.isArray(${arrRoot}) && ${arrRoot}.length ? Math.max(...${src}.map(Number)) : null)`;
+      }
       default:
         return `/* unknown aggregate ${expr.func} */`;
     }

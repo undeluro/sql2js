@@ -1,0 +1,57 @@
+[
+  {
+    "id": 1,
+    "name": "Anna Maj",
+    "orders": [
+      { "product": "Laptop", "total": 4500 },
+      { "product": "Mysz", "total": 80 },
+      { "product": "Monitor", "total": 1800 },
+      { "product": "Klawiatura", "total": 250 }
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Borys Krawczyk",
+    "orders": [
+      { "product": "Tablet", "total": 2100 },
+      { "product": "Etui", "total": 45 }
+    ]
+  },
+  {
+    "id": 3,
+    "name": "Celina Wójcik",
+    "orders": [
+      { "product": "GPU", "total": 3200 },
+      { "product": "RAM", "total": 600 },
+      { "product": "SSD", "total": 350 },
+      { "product": "Obudowa", "total": 420 },
+      { "product": "Zasilacz", "total": 310 }
+    ]
+  },
+  {
+    "id": 4,
+    "name": "Damian Lis",
+    "orders": [
+      { "product": "Kabel USB", "total": 15 },
+      { "product": "Pendrive", "total": 35 },
+      { "product": "Hub USB", "total": 60 }
+    ]
+  },
+  {
+    "id": 5,
+    "name": "Ewa Pawlak",
+    "orders": []
+  },
+  {
+    "id": 6,
+    "name": "Filip Zając",
+    "orders": [
+      { "product": "Serwer", "total": 12000 },
+      { "product": "Switch", "total": 800 },
+      { "product": "Rack", "total": 1500 },
+      { "product": "UPS", "total": 2400 },
+      { "product": "Kabel Cat6", "total": 90 },
+      { "product": "Patch panel", "total": 150 }
+    ]
+  }
+]
