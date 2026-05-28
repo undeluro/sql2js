@@ -5,18 +5,22 @@
 // Uses React.createElement instead of JSX (no build step needed)
 // ──────────────────────────────────────────────
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { render, Box, Text, useApp, useInput } from 'ink';
+import SelectInput from 'ink-select-input';
+import figlet from 'figlet';
 import { compile, compileAndExecute } from '../pipeline.js';
 import { formatCompilerError } from '../errors/errors.js';
 import {
   colors, highlightSQL, highlightJS,
   pipelineBar, formatTable,
 } from './theme.js';
-import { extname, resolve } from 'node:path';
-import { existsSync, statSync } from 'node:fs';
+import { extname, relative, resolve } from 'node:path';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 
 const h = React.createElement;
+const EXCLUDED_DIRS = new Set(['.git', 'node_modules']);
+const TITLE = figlet.textSync('sql2js');
 
 // ── Detect data file from CLI args ───────────
 function resolveDataPath(arg) {
@@ -28,10 +32,76 @@ function resolveDataPath(arg) {
     : null;
 }
 
+function findJsonFiles(rootDir = process.cwd()) {
+  const files = [];
+
+  function walk(dir) {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const abs = resolve(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (!EXCLUDED_DIRS.has(entry.name)) {
+          walk(abs);
+        }
+      } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.json') {
+        files.push(abs);
+      }
+    }
+  }
+
+  walk(rootDir);
+  return files.sort((a, b) => relative(rootDir, a).localeCompare(relative(rootDir, b)));
+}
+
+function formatFileLabel(filePath) {
+  const rel = relative(process.cwd(), filePath);
+  return rel && !rel.startsWith('..') ? rel : filePath;
+}
+
+function enterAlternateScreen() {
+  if (!process.stdout.isTTY) return () => {};
+
+  let restored = false;
+  const restore = () => {
+    if (restored) return;
+    restored = true;
+    process.stdout.write('\x1b[?1049l');
+  };
+  const handleSignal = (exitCode) => {
+    restore();
+    process.exit(exitCode);
+  };
+  const handleSigint = () => handleSignal(130);
+  const handleSigterm = () => handleSignal(143);
+  const cleanup = () => {
+    process.off('exit', restore);
+    process.off('SIGINT', handleSigint);
+    process.off('SIGTERM', handleSigterm);
+  };
+
+  process.stdout.write('\x1b[?1049h\x1b[H');
+  process.once('exit', restore);
+  process.once('SIGINT', handleSigint);
+  process.once('SIGTERM', handleSigterm);
+
+  return () => {
+    cleanup();
+    restore();
+  };
+}
+
 // ── Main App Component ───────────────────────
 
 function App({ initialDataPath, initialJoinPath }) {
   const { exit } = useApp();
+
   const [query, setQuery] = useState('');
   const [dataPath, setDataPath] = useState(initialDataPath || '');
   const [joinPath] = useState(initialJoinPath || '');
@@ -40,12 +110,18 @@ function App({ initialDataPath, initialJoinPath }) {
   const [history, setHistory] = useState([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [dataError, setDataError] = useState(null);
+  const jsonFiles = useMemo(() => findJsonFiles(), []);
+  const dataItems = useMemo(() => jsonFiles.map(filePath => ({
+    label: formatFileLabel(filePath),
+    value: filePath,
+  })), [jsonFiles]);
 
   useInput((input, key) => {
     if (key.ctrl && input === 'c') { exit(); return; }
     if (key.ctrl && input === 'q') { exit(); return; }
 
     if (mode === 'data') {
+      if (dataItems.length > 0) return;
       if (key.return) {
         const resolved = resolveDataPath(dataPath);
         if (resolved) {
@@ -139,7 +215,8 @@ function App({ initialDataPath, initialJoinPath }) {
 
   // Header
   children.push(
-    h(Box, { key: 'header', marginBottom: 1 },
+    h(Box, { key: 'header', flexDirection: 'column', marginBottom: 1 },
+      h(Text, null, colors.primary(TITLE)),
       h(Text, null,
         `${colors.primary('⚡')} ${colors.heading('sql2js')} ${colors.muted('— SQL-to-JS Compiler for JSON')}`
       )
@@ -148,20 +225,43 @@ function App({ initialDataPath, initialJoinPath }) {
 
   // Data file input mode
   if (mode === 'data') {
-    children.push(
-      h(Box, { key: 'data-mode', flexDirection: 'column' },
-        h(Text, null, colors.secondary('📂 Enter path to JSON data file:')),
-        h(Box, { marginTop: 1 },
-          h(Text, null, `${colors.muted('>')} ${dataPath}${colors.primary('█')}`)
-        ),
-        dataError && h(Box, { marginTop: 1 },
-          h(Text, null, colors.error(dataError))
-        ),
-        h(Box, { marginTop: 1 },
-          h(Text, null, colors.dimText('Example: data/users.json - Press Enter to confirm - Ctrl+C to exit'))
+    if (dataItems.length > 0) {
+      children.push(
+        h(Box, { key: 'data-mode', flexDirection: 'column' },
+          h(Text, null, colors.secondary('📂 Select JSON data file:')),
+          h(Box, { marginTop: 1 },
+            h(SelectInput, {
+              items: dataItems,
+              isFocused: mode === 'data',
+              limit: Math.min(10, dataItems.length),
+              onSelect: item => {
+                setDataPath(item.value);
+                setDataError(null);
+                setMode('query');
+              },
+            })
+          ),
+          h(Box, { marginTop: 1 },
+            h(Text, null, colors.dimText('↑↓ or j/k to choose - Enter to confirm - Ctrl+C to exit'))
+          )
         )
-      )
-    );
+      );
+    } else {
+      children.push(
+        h(Box, { key: 'data-mode', flexDirection: 'column' },
+          h(Text, null, colors.secondary('📂 Enter path to JSON data file:')),
+          h(Box, { marginTop: 1 },
+            h(Text, null, `${colors.muted('>')} ${dataPath}${colors.primary('█')}`)
+          ),
+          dataError && h(Box, { marginTop: 1 },
+            h(Text, null, colors.error(dataError))
+          ),
+          h(Box, { marginTop: 1 },
+            h(Text, null, colors.dimText('Example: data/users.json - Press Enter to confirm - Ctrl+C to exit'))
+          )
+        )
+      );
+    }
   }
 
   // Query input mode
@@ -273,4 +373,6 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-render(h(App, { initialDataPath: dataPath, initialJoinPath: joinPath }));
+const restoreAlternateScreen = enterAlternateScreen();
+const inkApp = render(h(App, { initialDataPath: dataPath, initialJoinPath: joinPath }));
+inkApp.waitUntilExit().then(restoreAlternateScreen, restoreAlternateScreen);
