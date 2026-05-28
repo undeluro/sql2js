@@ -11,13 +11,14 @@ import SemanticAnalyzer from './semantic/analyzer.js';
 import CodeGenerator from './codegen/generator.js';
 import Executor from './runtime/executor.js';
 import { CollectingErrorListener, CompilerError } from './errors/errors.js';
+import { mergeSchemas, normalizeDataset } from './runtime/dataset.js';
 
 /**
  * Full compilation pipeline.
  * @param {string} input — the SQL query string
  * @returns {{ tokens, parseTree, ast, semanticErrors, code, stages }}
  */
-export function compile(input) {
+export function compile(input, options = {}) {
   const stages = [];
   const result = {
     tokens: null,
@@ -83,12 +84,9 @@ export function compile(input) {
   }
 
   // ── 4. SEMANTIC ANALYSIS ──────────────────
-  const analyzer = new SemanticAnalyzer();
-  // Analyze each query in the program
-  for (const query of result.ast.queries) {
-    const { errors } = analyzer.analyze(query);
-    result.semanticErrors.push(...errors);
-  }
+  const analyzer = new SemanticAnalyzer(options.schema || null);
+  const { errors } = analyzer.analyzeProgram(result.ast);
+  result.semanticErrors.push(...errors);
 
   if (result.semanticErrors.length > 0) {
     result.errors.push(...result.semanticErrors);
@@ -100,9 +98,7 @@ export function compile(input) {
   // ── 5. CODE GENERATION ────────────────────
   try {
     const codegen = new CodeGenerator();
-    // Generate code for first query (TUI handles one query at a time)
-    const firstQuery = result.ast.queries[0];
-    const { code, formattedCode } = codegen.generate(firstQuery);
+    const { code, formattedCode } = codegen.generate(result.ast);
     result.code = code;
     result.formattedCode = formattedCode;
     stages.push({ name: 'Codegen', status: 'ok' });
@@ -119,25 +115,51 @@ export function compile(input) {
  * Full end-to-end: compile + execute
  */
 export function compileAndExecute(input, dataPath, joinDataPath = null) {
-  const compiled = compile(input);
-  if (compiled.errors.length > 0) {
-    return { ...compiled, result: null, runtimeError: null };
+  const parsed = compile(input);
+  if (parsed.errors.length > 0) {
+    return { ...parsed, result: null, dataset: null, runtimeError: null };
   }
 
   const executor = new Executor();
-  let data;
-  let joinData;
+  let dataset;
+  let joinDataset = null;
+  let schema;
   try {
-    data = executor.loadJSON(dataPath);
-    joinData = joinDataPath ? executor.loadJSON(joinDataPath) : null;
+    const rawData = executor.loadJSON(dataPath);
+    dataset = normalizeDataset(rawData, dataPath);
+
+    if (joinDataPath) {
+      const rawJoinData = executor.loadJSON(joinDataPath);
+      joinDataset = normalizeDataset(rawJoinData, joinDataPath);
+    }
+
+    schema = mergeSchemas(dataset.schema, joinDataset?.schema || null);
   } catch (e) {
     const error = e?.phase ? e : new CompilerError('runtime', e.message, null);
-    compiled.errors.push(error);
-    compiled.stages.push({ name: 'Runtime', status: 'error' });
-    return { ...compiled, result: null, runtimeError: error };
+    return {
+      tokens: null,
+      parseTree: null,
+      ast: null,
+      semanticErrors: [],
+      code: null,
+      errors: [error],
+      stages: [{ name: 'Runtime', status: 'error' }],
+      result: null,
+      dataset: null,
+      runtimeError: error,
+    };
   }
 
-  const { result, error } = executor.execute(compiled.code, data, joinData);
+  const compiled = compile(input, { schema });
+  if (compiled.errors.length > 0) {
+    return { ...compiled, result: null, dataset: dataset.data, runtimeError: null };
+  }
+
+  const { result: executionResult, error } = executor.execute(
+    compiled.code,
+    dataset.data,
+    joinDataset?.data || null
+  );
 
   if (error) {
     compiled.errors.push(error);
@@ -146,5 +168,11 @@ export function compileAndExecute(input, dataPath, joinDataPath = null) {
     compiled.stages.push({ name: 'Runtime', status: 'ok' });
   }
 
-  return { ...compiled, result, runtimeError: error };
+  return {
+    ...compiled,
+    result: executionResult?.result ?? null,
+    dataset: executionResult?.dataset ?? dataset.data,
+    mutated: Boolean(executionResult?.mutated),
+    runtimeError: error,
+  };
 }

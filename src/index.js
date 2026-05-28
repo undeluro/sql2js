@@ -11,6 +11,7 @@
 
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import chalk from 'chalk';
 import { formatCompilerError } from './errors/errors.js';
 
@@ -25,6 +26,8 @@ let queryStr = null;
 let showHelp = false;
 let debugMode = false;
 let extendedDebugMode = false;
+let outputPath = null;
+let writeDatasetPath = null;
 
 function printExtendedDebug(res) {
   console.error(chalk.gray('\n--- Tokens ---'));
@@ -56,6 +59,12 @@ for (let i = 0; i < args.length; i++) {
     case '--execute': case '-e':
       queryStr = args[++i];
       break;
+    case '--output': case '-o':
+      outputPath = resolve(process.cwd(), args[++i]);
+      break;
+    case '--write-dataset':
+      writeDatasetPath = resolve(process.cwd(), args[++i]);
+      break;
     case '--debug': case '-dbg':
       debugMode = true;
       break;
@@ -84,6 +93,8 @@ ${chalk.bold('Options:')}
   -d, --data <file>       JSON data file
   -j, --join <file>       Second JSON file for JOIN
   -e, --execute <query>   Execute query and print result
+  -o, --output <file>     Write final result as pretty JSON
+  --write-dataset <file>  Write full modified dataset as pretty JSON
   -dbg, --debug           Print generated JavaScript in one-shot mode
   -edbg, --ex-debug       Print tokens, AST, and generated JavaScript
   -h, --help              Show this help
@@ -127,9 +138,24 @@ if (queryStr) {
     console.error(chalk.gray('--- End ---\n'));
   }
 
-  console.log(JSON.stringify(res.result, null, 2));
+  if (outputPath) {
+    writeJsonFile(outputPath, res.result);
+  }
+
+  if (writeDatasetPath) {
+    writeJsonFile(writeDatasetPath, res.dataset);
+  }
+
+  if (!outputPath && !writeDatasetPath) {
+    console.log(JSON.stringify(res.result, null, 2));
+  }
   process.exit(0);
 }
 
 // Interactive TUI mode
 await import('./tui/app.js');
+
+function writeJsonFile(filePath, value) {
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf-8');
+}

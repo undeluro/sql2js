@@ -194,7 +194,7 @@ function App({ initialDataPath, initialJoinPath }) {
         setResult({ query: queryStr, stages: compiled.stages, errors: compiled.errors, code: null, data: null });
       } else if (dataPath) {
         const execResult = compileAndExecute(queryStr, dataPath, joinPath || null);
-        setResult({ query: queryStr, stages: execResult.stages, errors: execResult.errors, code: compiled.code, data: execResult.result });
+        setResult({ query: queryStr, stages: execResult.stages, errors: execResult.errors, code: execResult.code || compiled.code, data: execResult.result });
       } else {
         setResult({ query: queryStr, stages: compiled.stages, errors: [], code: compiled.code, data: null });
       }
@@ -338,6 +338,13 @@ function App({ initialDataPath, initialJoinPath }) {
       resultChildren.push(
         h(Box, { key: 'no-results', marginTop: 1 },
           h(Text, null, colors.dimText('  (no matching rows)'))
+        )
+      );
+    } else if (result.data) {
+      resultChildren.push(
+        h(Box, { key: 'json-result', flexDirection: 'column', marginTop: 1 },
+          h(Text, { key: 'json-title' }, colors.muted('Result JSON:')),
+          h(Text, { key: 'json-body' }, JSON.stringify(result.data, null, 2))
         )
       );
     }
