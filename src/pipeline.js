@@ -125,8 +125,17 @@ export function compileAndExecute(input, dataPath, joinDataPath = null) {
   }
 
   const executor = new Executor();
-  const data = executor.loadJSON(dataPath);
-  const joinData = joinDataPath ? executor.loadJSON(joinDataPath) : null;
+  let data;
+  let joinData;
+  try {
+    data = executor.loadJSON(dataPath);
+    joinData = joinDataPath ? executor.loadJSON(joinDataPath) : null;
+  } catch (e) {
+    const error = e?.phase ? e : { phase: 'runtime', message: e.message, loc: null };
+    compiled.errors.push(error);
+    compiled.stages.push({ name: 'Runtime', status: 'error' });
+    return { ...compiled, result: null, runtimeError: error };
+  }
 
   const { result, error } = executor.execute(compiled.code, data, joinData);
 

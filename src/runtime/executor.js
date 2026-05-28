@@ -3,7 +3,8 @@
 // Executes generated JavaScript on JSON data
 // ──────────────────────────────────────────────
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
+import { extname } from 'node:path';
 import { CompilerError } from '../errors/errors.js';
 
 export default class Executor {
@@ -13,6 +14,11 @@ export default class Executor {
    */
   loadJSON(filePath) {
     try {
+      const stat = statSync(filePath);
+      if (!stat.isFile() || extname(filePath).toLowerCase() !== '.json') {
+        throw new Error('expected an existing .json file');
+      }
+
       const raw = readFileSync(filePath, 'utf-8');
       return JSON.parse(raw);
     } catch (e) {
