@@ -12,6 +12,7 @@
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
+import { formatCompilerError } from './errors/errors.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -85,8 +86,7 @@ if (queryStr) {
 
   if (res.errors.length > 0) {
     for (const e of res.errors) {
-      const pos = e.loc ? ` at ${e.loc.line}:${e.loc.column}` : '';
-      console.error(chalk.red(`[${e.phase}]${pos}: ${e.message}`));
+      console.error(chalk.red(formatCompilerError(e, q)));
     }
     process.exit(1);
   }

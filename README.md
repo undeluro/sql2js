@@ -367,6 +367,9 @@ node src/index.js
 # Wykonaj zapytanie i wydrukuj wynik jako JSON
 node src/index.js -e "SELECT name, age FROM users WHERE age > 18;" -d data/users.json
 
+# Wykonaj zapytanie i pokaĹĽ teĹĽ wygenerowany kod JavaScript
+node src/index.js -e "SELECT name FROM users LIMIT 1;" -d data/users.json --debug
+
 # Z JOIN
 node src/index.js -e "SELECT u.name, o.product FROM users AS u JOIN orders AS o ON u.id = o.userId;" -d data/users.json -j data/orders.json
 ```
@@ -374,6 +377,34 @@ node src/index.js -e "SELECT u.name, o.product FROM users AS u JOIN orders AS o 
 ### Pomoc
 ```bash
 node src/index.js --help
+```
+
+### Przykłady diagnostyki błędów
+
+Poniższe komendy celowo zawierają błędy i pokazują podział diagnostyki na fazy: `lexical`, `syntax`, `semantic`, `runtime`.
+
+```bash
+# Błąd leksykalny: znak @ nie należy do języka zapytań
+node src/index.js -e "SELECT name FROM users WHERE age > @;" -d data/users.json
+
+# Błąd składniowy: brakuje FROM po liście SELECT
+node src/index.js -e "SELECT name users;" -d data/users.json
+
+# Błąd semantyczny: alias u został zadeklarowany dwa razy
+node src/index.js -e "SELECT u.name FROM users AS u JOIN orders AS u ON u.id = u.id;" -d data/users.json -j data/orders.json
+
+# Błąd runtime: data jest katalogiem, a program wymaga pliku .json
+node src/index.js -e "SELECT name FROM users;" -d data
+```
+
+Przykładowy format błędu:
+
+```text
+[syntax] at 1:12: missing FROM at 'users'
+  SELECT name users;
+              ^
+  expected: FROM
+  offending text: "users"
 ```
 
 ---

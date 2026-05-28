@@ -3,10 +3,11 @@
 // ──────────────────────────────────────────────
 
 export class CompilerError {
-  constructor(phase, message, loc) {
-    this.phase = phase;     // 'lexer' | 'parser' | 'semantic' | 'codegen' | 'runtime'
+  constructor(phase, message, loc, details = null) {
+    this.phase = phase;     // 'lexical' | 'syntax' | 'semantic' | 'compiletime' | 'runtime'
     this.message = message;
     this.loc = loc;         // { line, column } | null
+    this.details = details; // optional extra diagnostic data
   }
 
   toString() {
@@ -15,21 +16,61 @@ export class CompilerError {
   }
 }
 
+export function formatCompilerError(error, source = null) {
+  const pos = error.loc ? ` at ${error.loc.line}:${error.loc.column}` : '';
+  const lines = [`[${error.phase}]${pos}: ${error.message}`];
+
+  if (source && error.loc) {
+    const sourceLine = source.split(/\r?\n/)[error.loc.line - 1];
+    if (sourceLine !== undefined) {
+      lines.push(`  ${sourceLine}`);
+      lines.push(`  ${' '.repeat(error.loc.column)}^`);
+    }
+  }
+
+  if (error.details?.expected) {
+    lines.push(`  expected: ${error.details.expected}`);
+  }
+  if (error.details?.offendingText) {
+    lines.push(`  offending text: ${JSON.stringify(error.details.offendingText)}`);
+  }
+
+  return lines.join('\n');
+}
+
 /**
  * Custom ANTLR4 error listener that collects errors
  * instead of printing to stderr
  */
 export class CollectingErrorListener {
-  constructor() {
+  constructor(phase) {
+    this.phase = phase;
     this.errors = [];
   }
 
-  syntaxError(_recognizer, _offendingSymbol, line, column, msg, _e) {
+  syntaxError(recognizer, offendingSymbol, line, column, msg, _e) {
+    const details = {};
+    const offendingText = offendingSymbol?.text;
+    if (offendingText && offendingText !== '<EOF>') {
+      details.offendingText = offendingText;
+    }
+
+    if (this.phase === 'syntax' && recognizer?.getExpectedTokens) {
+      try {
+        details.expected = recognizer
+          .getExpectedTokens()
+          .toString(recognizer.literalNames, recognizer.symbolicNames);
+      } catch {
+        // Expected-token formatting is best-effort only.
+      }
+    }
+
     this.errors.push(
       new CompilerError(
-        _offendingSymbol ? 'parser' : 'lexer',
+        this.phase,
         msg,
-        { line, column }
+        { line, column },
+        Object.keys(details).length > 0 ? details : null
       )
     );
   }
