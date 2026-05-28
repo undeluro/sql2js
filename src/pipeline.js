@@ -10,7 +10,7 @@ import ASTBuilder from './ast/builder.js';
 import SemanticAnalyzer from './semantic/analyzer.js';
 import CodeGenerator from './codegen/generator.js';
 import Executor from './runtime/executor.js';
-import { CollectingErrorListener } from './errors/errors.js';
+import { CollectingErrorListener, CompilerError } from './errors/errors.js';
 
 /**
  * Full compilation pipeline.
@@ -32,7 +32,7 @@ export function compile(input) {
   // ── 1. LEX ────────────────────────────────
   const chars = new antlr4.InputStream(input);
   const lexer = new JsonQueryLexer(chars);
-  const errorListener = new CollectingErrorListener();
+  const errorListener = new CollectingErrorListener('lexical');
 
   lexer.removeErrorListeners();
   lexer.addErrorListener(errorListener);
@@ -45,7 +45,7 @@ export function compile(input) {
     text: t.text,
     line: t.line,
     column: t.column,
-  })).filter(t => t.type !== 'EOF');
+  })).filter(t => t.type !== '-1');
 
   if (errorListener.errors.length > 0) {
     result.errors.push(...errorListener.errors);
@@ -56,7 +56,7 @@ export function compile(input) {
 
   // ── 2. PARSE ──────────────────────────────
   const parser = new JsonQueryParser(tokenStream);
-  const parserErrorListener = new CollectingErrorListener();
+  const parserErrorListener = new CollectingErrorListener('syntax');
 
   parser.removeErrorListeners();
   parser.addErrorListener(parserErrorListener);
@@ -77,7 +77,7 @@ export function compile(input) {
     result.ast = builder.visit(parseTree);
     stages.push({ name: 'AST', status: 'ok' });
   } catch (e) {
-    result.errors.push({ phase: 'ast', message: e.message, loc: null });
+    result.errors.push(new CompilerError('compiletime', `Failed to build AST: ${e.message}`, null));
     stages.push({ name: 'AST', status: 'error' });
     return result;
   }
@@ -107,7 +107,7 @@ export function compile(input) {
     result.formattedCode = formattedCode;
     stages.push({ name: 'Codegen', status: 'ok' });
   } catch (e) {
-    result.errors.push({ phase: 'codegen', message: e.message, loc: null });
+    result.errors.push(new CompilerError('compiletime', `Failed to generate JavaScript: ${e.message}`, null));
     stages.push({ name: 'Codegen', status: 'error' });
     return result;
   }
@@ -131,7 +131,7 @@ export function compileAndExecute(input, dataPath, joinDataPath = null) {
     data = executor.loadJSON(dataPath);
     joinData = joinDataPath ? executor.loadJSON(joinDataPath) : null;
   } catch (e) {
-    const error = e?.phase ? e : { phase: 'runtime', message: e.message, loc: null };
+    const error = e?.phase ? e : new CompilerError('runtime', e.message, null);
     compiled.errors.push(error);
     compiled.stages.push({ name: 'Runtime', status: 'error' });
     return { ...compiled, result: null, runtimeError: error };

@@ -8,6 +8,7 @@
 import React, { useState } from 'react';
 import { render, Box, Text, useApp, useInput } from 'ink';
 import { compile, compileAndExecute } from '../pipeline.js';
+import { formatCompilerError } from '../errors/errors.js';
 import {
   colors, highlightSQL, highlightJS,
   pipelineBar, formatTable,
@@ -201,10 +202,13 @@ function App({ initialDataPath, initialJoinPath }) {
         h(Text, { key: 'err-title' }, colors.error('Errors:'))
       ];
       result.errors.forEach((e, i) => {
-        const pos = e.loc ? colors.muted(`${e.loc.line}:${e.loc.column} `) : '';
+        const formatted = formatCompilerError(e, result.query)
+          .split('\n')
+          .map(line => `  ${line}`)
+          .join('\n');
         errorItems.push(
           h(Text, { key: `err-${i}` },
-            `${colors.error('  ✗')} ${colors.dimText(`[${e.phase}]`)} ${pos}${colors.text(e.message)}`)
+            colors.error(formatted))
         );
       });
       resultChildren.push(
