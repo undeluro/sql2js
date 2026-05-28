@@ -12,16 +12,19 @@ import {
   colors, highlightSQL, highlightJS,
   pipelineBar, formatTable,
 } from './theme.js';
-import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { extname, resolve } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
 
 const h = React.createElement;
 
 // ── Detect data file from CLI args ───────────
 function resolveDataPath(arg) {
   if (!arg) return null;
-  const abs = resolve(process.cwd(), arg);
-  return existsSync(abs) ? abs : null;
+  const normalized = arg.trim().replace(/^['"]|['"]$/g, '');
+  const abs = resolve(process.cwd(), normalized);
+  return existsSync(abs) && statSync(abs).isFile() && extname(abs).toLowerCase() === '.json'
+    ? abs
+    : null;
 }
 
 // ── Main App Component ───────────────────────
@@ -35,20 +38,28 @@ function App({ initialDataPath, initialJoinPath }) {
   const [mode, setMode] = useState(initialDataPath ? 'query' : 'data');
   const [history, setHistory] = useState([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
+  const [dataError, setDataError] = useState(null);
 
   useInput((input, key) => {
     if (key.ctrl && input === 'c') { exit(); return; }
     if (key.ctrl && input === 'q') { exit(); return; }
 
     if (mode === 'data') {
-      handleTextInput(input, key, dataPath, setDataPath);
       if (key.return) {
         const resolved = resolveDataPath(dataPath);
         if (resolved) {
           setDataPath(resolved);
+          setDataError(null);
           setMode('query');
+        } else {
+          setDataError(dataPath.trim()
+            ? `Enter an existing .json file, not a directory: ${dataPath.trim()}`
+            : 'Enter a JSON file path, for example data/users.json');
         }
+        return;
       }
+      setDataError(null);
+      handleTextInput(input, key, dataPath, setDataPath);
       return;
     }
 
@@ -142,8 +153,11 @@ function App({ initialDataPath, initialJoinPath }) {
         h(Box, { marginTop: 1 },
           h(Text, null, `${colors.muted('>')} ${dataPath}${colors.primary('█')}`)
         ),
+        dataError && h(Box, { marginTop: 1 },
+          h(Text, null, colors.error(dataError))
+        ),
         h(Box, { marginTop: 1 },
-          h(Text, null, colors.dimText('Press Enter to confirm • Ctrl+C to exit'))
+          h(Text, null, colors.dimText('Example: data/users.json - Press Enter to confirm - Ctrl+C to exit'))
         )
       )
     );
@@ -153,7 +167,7 @@ function App({ initialDataPath, initialJoinPath }) {
   if (mode === 'query') {
     children.push(
       h(Box, { key: 'query-mode', flexDirection: 'column' },
-        h(Text, null, colors.muted(`📂 ${dataPath ? dataPath.split('/').pop() : 'no file'}`)),
+        h(Text, null, colors.muted(`📂 ${dataPath ? dataPath.split(/[\\/]/).pop() : 'no file'}`)),
         h(Box, { marginTop: 1 },
           h(Text, null, `${colors.secondary('Query:')} ${highlightSQL(query)}${colors.primary('█')}`)
         ),
