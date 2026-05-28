@@ -24,6 +24,26 @@ let joinPath = null;
 let queryStr = null;
 let showHelp = false;
 let debugMode = false;
+let extendedDebugMode = false;
+
+function printExtendedDebug(res) {
+  console.error(chalk.gray('\n--- Tokens ---'));
+  if (res.tokens?.length) {
+    for (const [index, token] of res.tokens.entries()) {
+      const pos = `${token.line}:${token.column}`;
+      console.error(`${String(index).padStart(3, ' ')}  ${token.type.padEnd(14)} ${pos.padEnd(7)} ${JSON.stringify(token.text)}`);
+    }
+  } else {
+    console.error('(no tokens)');
+  }
+
+  console.error(chalk.gray('\n--- AST ---'));
+  console.error(res.ast ? JSON.stringify(res.ast, null, 2) : '(AST not available)');
+
+  console.error(chalk.gray('\n--- Generated JS ---'));
+  console.error(res.code || '(code not generated)');
+  console.error(chalk.gray('--- End Extended Debug ---\n'));
+}
 
 for (let i = 0; i < args.length; i++) {
   switch (args[i]) {
@@ -38,6 +58,9 @@ for (let i = 0; i < args.length; i++) {
       break;
     case '--debug': case '-dbg':
       debugMode = true;
+      break;
+    case '--ex-debug': case '-edbg':
+      extendedDebugMode = true;
       break;
     case '--help': case '-h':
       showHelp = true;
@@ -62,12 +85,14 @@ ${chalk.bold('Options:')}
   -j, --join <file>       Second JSON file for JOIN
   -e, --execute <query>   Execute query and print result
   -dbg, --debug           Print generated JavaScript in one-shot mode
+  -edbg, --ex-debug       Print tokens, AST, and generated JavaScript
   -h, --help              Show this help
 
 ${chalk.bold('Examples:')}
   sql2js -d users.json
   sql2js -e "SELECT name, age FROM users WHERE age > 18;" -d users.json
   sql2js -e "SELECT name FROM users;" -d users.json --debug
+  sql2js -e "SELECT name FROM users;" -d users.json --ex-debug
   sql2js -e "SELECT u.name, o.product FROM users AS u JOIN orders AS o ON u.id = o.userId;" -d users.json -j orders.json
   `);
   process.exit(0);
@@ -84,6 +109,10 @@ if (queryStr) {
   const q = queryStr.endsWith(';') ? queryStr : queryStr + ';';
   const res = compileAndExecute(q, dataPath, joinPath);
 
+  if (extendedDebugMode) {
+    printExtendedDebug(res);
+  }
+
   if (res.errors.length > 0) {
     for (const e of res.errors) {
       console.error(chalk.red(formatCompilerError(e, q)));
@@ -92,7 +121,7 @@ if (queryStr) {
   }
 
   // Print generated code if running with --debug/-dbg
-  if (debugMode) {
+  if (debugMode && !extendedDebugMode) {
     console.error(chalk.gray('\n--- Generated JS ---'));
     console.error(res.code);
     console.error(chalk.gray('--- End ---\n'));

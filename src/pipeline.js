@@ -45,7 +45,7 @@ export function compile(input) {
     text: t.text,
     line: t.line,
     column: t.column,
-  })).filter(t => t.type !== 'EOF');
+  })).filter(t => t.type !== '-1');
 
   if (errorListener.errors.length > 0) {
     result.errors.push(...errorListener.errors);

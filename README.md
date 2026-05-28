@@ -367,8 +367,11 @@ node src/index.js
 # Wykonaj zapytanie i wydrukuj wynik jako JSON
 node src/index.js -e "SELECT name, age FROM users WHERE age > 18;" -d data/users.json
 
-# Wykonaj zapytanie i pokaĹĽ teĹĽ wygenerowany kod JavaScript
+# Wykonaj zapytanie i pokaz tell wygenerowany kod JavaScript
 node src/index.js -e "SELECT name FROM users LIMIT 1;" -d data/users.json --debug
+
+# Rozszerzony debug: tokeny, AST i wygenerowany kod JavaScript
+node src/index.js -e "SELECT name FROM users LIMIT 1;" -d data/users.json --ex-debug
 
 # Z JOIN
 node src/index.js -e "SELECT u.name, o.product FROM users AS u JOIN orders AS o ON u.id = o.userId;" -d data/users.json -j data/orders.json
