@@ -6,3 +6,7 @@ define Json, add verification
 add create
 fix readme order
 
+think about TUI, should it be like whole rdbms or what
+is json a database not a table since create coolection adds to json??
+
+commands from file

@@ -1,0 +1,267 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "Alicja Kowalska",
+      "age": 29,
+      "email": "alicja@example.com",
+      "address": {
+        "city": "Warszawa",
+        "street": "Marszałkowska 10",
+        "zip": "00-001"
+      },
+      "profile": {
+        "bio": "Software developer",
+        "active": true,
+        "score": 92
+      },
+      "tags": [
+        "admin",
+        "developer",
+        "team-lead"
+      ],
+      "orders": [
+        {
+          "product": "Laptop",
+          "total": 4500
+        },
+        {
+          "product": "Klawiatura",
+          "total": 250
+        },
+        {
+          "product": "Monitor",
+          "total": 1800
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Bartosz Nowak",
+      "age": 34,
+      "email": "bartosz@example.com",
+      "address": {
+        "city": "Kraków",
+        "street": "Floriańska 5",
+        "zip": "31-001"
+      },
+      "profile": {
+        "bio": "Data scientist",
+        "active": true,
+        "score": 87
+      },
+      "tags": [
+        "analyst",
+        "developer"
+      ],
+      "orders": [
+        {
+          "product": "GPU",
+          "total": 3200
+        },
+        {
+          "product": "RAM",
+          "total": 600
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Celina Wiśniewska",
+      "age": 22,
+      "email": "celina@example.com",
+      "address": {
+        "city": "Gdańsk",
+        "street": "Długa 42",
+        "zip": "80-001"
+      },
+      "profile": {
+        "bio": "UX designer",
+        "active": false,
+        "score": 76
+      },
+      "tags": [
+        "design",
+        "frontend"
+      ],
+      "orders": [
+        {
+          "product": "Tablet",
+          "total": 2100
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Dawid Lewandowski",
+      "age": 41,
+      "email": "dawid@example.com",
+      "address": {
+        "city": "Wrocław",
+        "street": "Świdnicka 7",
+        "zip": "50-001"
+      },
+      "profile": {
+        "bio": "DevOps engineer",
+        "active": true,
+        "score": 95
+      },
+      "tags": [
+        "admin",
+        "ops",
+        "security",
+        "developer"
+      ],
+      "orders": [
+        {
+          "product": "Serwer",
+          "total": 12000
+        },
+        {
+          "product": "Switch",
+          "total": 800
+        },
+        {
+          "product": "Kabel Cat6",
+          "total": 150
+        },
+        {
+          "product": "UPS",
+          "total": 2400
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Ewa Zielińska",
+      "age": 17,
+      "email": "ewa@example.com",
+      "address": {
+        "city": "Poznań",
+        "street": "Św. Marcin 22",
+        "zip": "61-001"
+      },
+      "profile": {
+        "bio": "Student",
+        "active": true,
+        "score": 65
+      },
+      "tags": [
+        "intern"
+      ],
+      "orders": []
+    },
+    {
+      "id": 6,
+      "name": "Filip Kamiński",
+      "age": 28,
+      "email": "filip@example.com",
+      "address": {
+        "city": "Łódź",
+        "street": "Piotrkowska 100",
+        "zip": "90-001"
+      },
+      "profile": {
+        "bio": "Backend developer",
+        "active": true,
+        "score": 88
+      },
+      "tags": [
+        "developer",
+        "backend"
+      ],
+      "orders": [
+        {
+          "product": "Mysz",
+          "total": 180
+        },
+        {
+          "product": "Słuchawki",
+          "total": 450
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Grażyna Dąbrowska",
+      "age": 55,
+      "email": "grazyna@example.com",
+      "address": {
+        "city": "Katowice",
+        "street": "3 Maja 15",
+        "zip": "40-001"
+      },
+      "profile": {
+        "bio": "Project manager",
+        "active": false,
+        "score": 71
+      },
+      "tags": [
+        "management"
+      ],
+      "orders": [
+        {
+          "product": "Drukarka",
+          "total": 900
+        },
+        {
+          "product": "Toner",
+          "total": 120
+        },
+        {
+          "product": "Papier A4",
+          "total": 35
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Hubert Szymański",
+      "age": 31,
+      "email": "hubert@example.com",
+      "address": {
+        "city": "Warszawa",
+        "street": "Nowy Świat 30",
+        "zip": "00-002"
+      },
+      "profile": {
+        "bio": "Full-stack developer",
+        "active": true,
+        "score": 91
+      },
+      "tags": [
+        "developer",
+        "frontend",
+        "backend",
+        "admin"
+      ],
+      "orders": [
+        {
+          "product": "MacBook Pro",
+          "total": 9800
+        },
+        {
+          "product": "Magic Keyboard",
+          "total": 700
+        }
+      ]
+    }
+  ],
+  "people": [
+    {
+      "id": 1,
+      "name": "Ala",
+      "age": 20
+    },
+    {
+      "id": 2,
+      "name": "Jan",
+      "age": 17
+    },
+    {
+      "id": 3,
+      "name": "Ola",
+      "age": 21
+    }
+  ]
+}

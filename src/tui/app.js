@@ -218,7 +218,7 @@ function App({ initialDataPath, initialJoinPath }) {
     h(Box, { key: 'header', flexDirection: 'column', marginBottom: 1 },
       h(Text, null, colors.primary(TITLE)),
       h(Text, null,
-        `${colors.primary('⚡')} ${colors.heading('sql2js')} ${colors.muted('— SQL-to-JS Compiler for JSON')}`
+        `${colors.primary('⚡')} ${colors.muted('SQL-to-JS Compiler for JSON')}`
       )
     )
   );
