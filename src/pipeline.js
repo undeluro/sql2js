@@ -12,6 +12,7 @@ import CodeGenerator from './codegen/generator.js';
 import Executor from './runtime/executor.js';
 import { CollectingErrorListener, CompilerError } from './errors/errors.js';
 import { mergeSchemas, normalizeDataset } from './runtime/dataset.js';
+import { cloneDatabaseData, loadDatabase, refreshDatabaseSchema } from './runtime/database.js';
 
 /**
  * Full compilation pipeline.
@@ -173,6 +174,85 @@ export function compileAndExecute(input, dataPath, joinDataPath = null) {
     result: executionResult?.result ?? null,
     dataset: executionResult?.dataset ?? dataset.data,
     mutated: Boolean(executionResult?.mutated),
+    mutations: executionResult?.mutations || [],
+    mutationSummary: formatMutationSummary(executionResult?.mutations || []),
     runtimeError: error,
   };
+}
+
+export function createDatabaseSession(filePath) {
+  return loadDatabase(filePath);
+}
+
+export function executeProgram(input, session, options = {}) {
+  const schema = mergeSchemas(session.schema, options.joinSession?.schema || null);
+  const compiled = compile(input, { schema });
+  if (compiled.errors.length > 0) {
+    return {
+      ...compiled,
+      result: null,
+      dataset: session.data,
+      mutated: false,
+      mutations: [],
+      mutationSummary: '',
+      runtimeError: null,
+    };
+  }
+
+  const executor = new Executor();
+  const workingData = cloneDatabaseData(session.data);
+  const joinData = options.joinSession ? cloneDatabaseData(options.joinSession.data) : null;
+  const { result: executionResult, error } = executor.execute(compiled.code, workingData, joinData);
+
+  if (error) {
+    compiled.errors.push(error);
+    compiled.stages.push({ name: 'Runtime', status: 'error' });
+    return {
+      ...compiled,
+      result: null,
+      dataset: session.data,
+      mutated: false,
+      mutations: [],
+      mutationSummary: '',
+      runtimeError: error,
+    };
+  }
+
+  const mutated = Boolean(executionResult?.mutated);
+  if (mutated) {
+    session.data = executionResult.dataset;
+    refreshDatabaseSchema(session);
+  }
+
+  compiled.stages.push({ name: 'Runtime', status: 'ok' });
+
+  const mutations = executionResult?.mutations || [];
+  return {
+    ...compiled,
+    result: executionResult?.result ?? null,
+    dataset: executionResult?.dataset ?? session.data,
+    mutated,
+    mutations,
+    mutationSummary: formatMutationSummary(mutations),
+    runtimeError: null,
+  };
+}
+
+export function formatMutationSummary(mutations) {
+  if (!mutations || mutations.length === 0) return '';
+
+  return mutations.map(mutation => {
+    switch (mutation.type) {
+      case 'create':
+        return `Created collection ${mutation.collection} with ${mutation.count} rows`;
+      case 'insert':
+        return `Inserted ${mutation.count} row into ${mutation.collection}`;
+      case 'update':
+        return `Updated ${mutation.count} rows in ${mutation.collection}`;
+      case 'delete':
+        return `Deleted ${mutation.count} rows from ${mutation.collection}`;
+      default:
+        return `${mutation.type} ${mutation.collection}`;
+    }
+  }).join('; ');
 }

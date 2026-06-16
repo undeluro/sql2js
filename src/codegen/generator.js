@@ -16,6 +16,7 @@ export default class CodeGenerator {
     lines.push('((data, joinData) => {');
     lines.push(`${indent(1)}let __lastResult = data;`);
     lines.push(`${indent(1)}let __mutated = false;`);
+    lines.push(`${indent(1)}const __mutations = [];`);
     lines.push(`${indent(1)}const __getCollection = (name) => {`);
     lines.push(`${indent(2)}if (data && Array.isArray(data[name])) return data[name];`);
     lines.push(`${indent(2)}if (joinData && Array.isArray(joinData[name])) return joinData[name];`);
@@ -36,7 +37,7 @@ export default class CodeGenerator {
     }
 
     lines.push('');
-    lines.push(`${indent(1)}return { result: __lastResult, dataset: data, mutated: __mutated };`);
+    lines.push(`${indent(1)}return { result: __lastResult, dataset: data, mutated: __mutated, mutations: __mutations };`);
     lines.push('})');
 
     const code = lines.join('\n');
@@ -53,6 +54,7 @@ export default class CodeGenerator {
         lines.push(`${indent(1)}// CREATE COLLECTION ${statement.name}`);
         lines.push(`${indent(1)}data[${JSON.stringify(statement.name)}] = ${this._exprToJS(statement.records, { rowVar: 'row' })};`);
         lines.push(`${indent(1)}__mutated = true;`);
+        lines.push(`${indent(1)}__mutations.push({ type: 'create', collection: ${JSON.stringify(statement.name)}, count: data[${JSON.stringify(statement.name)}].length });`);
         lines.push(`${indent(1)}__lastResult = data;`);
         break;
       case 'Insert':
@@ -61,6 +63,7 @@ export default class CodeGenerator {
         lines.push(`${indent(1)}if (!Array.isArray(data[${JSON.stringify(statement.collection)}])) data[${JSON.stringify(statement.collection)}] = [];`);
         lines.push(`${indent(1)}data[${JSON.stringify(statement.collection)}].push(${this._exprToJS(statement.record, { rowVar: 'row' })});`);
         lines.push(`${indent(1)}__mutated = true;`);
+        lines.push(`${indent(1)}__mutations.push({ type: 'insert', collection: ${JSON.stringify(statement.collection)}, count: 1 });`);
         lines.push(`${indent(1)}__lastResult = data;`);
         break;
       case 'Update':
@@ -190,8 +193,10 @@ export default class CodeGenerator {
 
     lines.push('');
     lines.push(`${indent(1)}// UPDATE ${statement.collection}`);
+    lines.push(`${indent(1)}let __updated_${statement.collection} = 0;`);
     lines.push(`${indent(1)}data[${collection}] = __getCollection(${collection}).map(row => {`);
     lines.push(`${indent(2)}if (!(${condition})) return row;`);
+    lines.push(`${indent(2)}__updated_${statement.collection}++;`);
     lines.push(`${indent(2)}const __next = { ...row };`);
     for (const assignment of statement.assignments) {
       lines.push(`${indent(2)}__setPath(__next, ${JSON.stringify(assignment.path.segments)}, ${this._exprToJS(assignment.expr, env)});`);
@@ -199,6 +204,7 @@ export default class CodeGenerator {
     lines.push(`${indent(2)}return __next;`);
     lines.push(`${indent(1)}});`);
     lines.push(`${indent(1)}__mutated = true;`);
+    lines.push(`${indent(1)}__mutations.push({ type: 'update', collection: ${collection}, count: __updated_${statement.collection} });`);
     lines.push(`${indent(1)}__lastResult = data;`);
   }
 
@@ -212,8 +218,10 @@ export default class CodeGenerator {
 
     lines.push('');
     lines.push(`${indent(1)}// DELETE FROM ${statement.collection}`);
+    lines.push(`${indent(1)}const __beforeDelete_${statement.collection} = __getCollection(${collection}).length;`);
     lines.push(`${indent(1)}data[${collection}] = __getCollection(${collection}).filter(row => !(${condition}));`);
     lines.push(`${indent(1)}__mutated = true;`);
+    lines.push(`${indent(1)}__mutations.push({ type: 'delete', collection: ${collection}, count: __beforeDelete_${statement.collection} - data[${collection}].length });`);
     lines.push(`${indent(1)}__lastResult = data;`);
   }
 

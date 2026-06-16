@@ -5,11 +5,13 @@
 // Uses React.createElement instead of JSX (no build step needed)
 // ──────────────────────────────────────────────
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { render, Box, Text, useApp, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
+import TextInput from 'ink-text-input';
 import figlet from 'figlet';
-import { compile, compileAndExecute } from '../pipeline.js';
+import { compile, createDatabaseSession, executeProgram } from '../pipeline.js';
+import { saveDatabase } from '../runtime/database.js';
 import { formatCompilerError } from '../errors/errors.js';
 import {
   colors, highlightSQL, highlightJS,
@@ -23,13 +25,12 @@ const EXCLUDED_DIRS = new Set(['.git', 'node_modules']);
 const TITLE = figlet.textSync('sql2js');
 
 // ── Detect data file from CLI args ───────────
-function resolveDataPath(arg) {
+function resolveDatabasePath(arg) {
   if (!arg) return null;
   const normalized = arg.trim().replace(/^['"]|['"]$/g, '');
   const abs = resolve(process.cwd(), normalized);
-  return existsSync(abs) && statSync(abs).isFile() && extname(abs).toLowerCase() === '.json'
-    ? abs
-    : null;
+  if (extname(abs).toLowerCase() !== '.json') return null;
+  return !existsSync(abs) || statSync(abs).isFile() ? abs : null;
 }
 
 function findJsonFiles(rootDir = process.cwd()) {
@@ -103,40 +104,34 @@ function App({ initialDataPath, initialJoinPath }) {
   const { exit } = useApp();
 
   const [query, setQuery] = useState('');
+  const [dataPathInput, setDataPathInput] = useState(initialDataPath || '');
   const [dataPath, setDataPath] = useState(initialDataPath || '');
   const [joinPath] = useState(initialJoinPath || '');
+  const [session, setSession] = useState(null);
+  const [joinSession, setJoinSession] = useState(null);
   const [result, setResult] = useState(null);
   const [mode, setMode] = useState(initialDataPath ? 'query' : 'data');
   const [history, setHistory] = useState([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [dataError, setDataError] = useState(null);
+  const [status, setStatus] = useState('');
   const jsonFiles = useMemo(() => findJsonFiles(), []);
   const dataItems = useMemo(() => jsonFiles.map(filePath => ({
     label: formatFileLabel(filePath),
     value: filePath,
-  })), [jsonFiles]);
+  })).concat({ label: '+ Create new database...', value: '__create__' }), [jsonFiles]);
+
+  useEffect(() => {
+    if (initialDataPath) {
+      openDatabase(initialDataPath);
+    }
+  }, []);
 
   useInput((input, key) => {
     if (key.ctrl && input === 'c') { exit(); return; }
     if (key.ctrl && input === 'q') { exit(); return; }
 
     if (mode === 'data') {
-      if (dataItems.length > 0) return;
-      if (key.return) {
-        const resolved = resolveDataPath(dataPath);
-        if (resolved) {
-          setDataPath(resolved);
-          setDataError(null);
-          setMode('query');
-        } else {
-          setDataError(dataPath.trim()
-            ? `Enter an existing .json file, not a directory: ${dataPath.trim()}`
-            : 'Enter a JSON file path, for example data/users.json');
-        }
-        return;
-      }
-      setDataError(null);
-      handleTextInput(input, key, dataPath, setDataPath);
       return;
     }
 
@@ -158,11 +153,6 @@ function App({ initialDataPath, initialJoinPath }) {
         return;
       }
 
-      handleTextInput(input, key, query, setQuery);
-
-      if (key.return && query.trim()) {
-        executeQuery(query.trim());
-      }
       return;
     }
 
@@ -175,35 +165,66 @@ function App({ initialDataPath, initialJoinPath }) {
     }
   });
 
-  function handleTextInput(input, key, value, setter) {
-    if (key.backspace || key.delete) {
-      setter(value.slice(0, -1));
-    } else if (!key.ctrl && !key.meta && !key.upArrow && !key.downArrow && !key.return && !key.escape && input) {
-      setter(value + input);
+  function openDatabase(filePath) {
+    const resolved = resolveDatabasePath(filePath);
+    if (!resolved) {
+      setDataError(filePath.trim()
+        ? `Enter a .json database file path, not a directory: ${filePath.trim()}`
+        : 'Enter a JSON database path, for example data/db.json');
+      return;
+    }
+
+    try {
+      const dbSession = createDatabaseSession(resolved);
+      const dbJoinSession = joinPath ? createDatabaseSession(joinPath) : null;
+      setSession(dbSession);
+      setJoinSession(dbJoinSession);
+      setDataPath(resolved);
+      setDataPathInput(resolved);
+      setDataError(null);
+      setStatus(dbSession.created ? 'New database session initialized' : 'Database loaded');
+      setMode('query');
+    } catch (error) {
+      setDataError(error.message);
     }
   }
 
   function executeQuery(q) {
-    const queryStr = q.endsWith(';') ? q : q + ';';
+    const trimmedQuery = q.trim();
+    if (!trimmedQuery) return;
+    const queryStr = trimmedQuery.endsWith(';') ? trimmedQuery : trimmedQuery + ';';
     setHistory(prev => [...prev, queryStr]);
     setHistoryIdx(-1);
 
     try {
       const compiled = compile(queryStr);
       if (compiled.errors.length > 0) {
-        setResult({ query: queryStr, stages: compiled.stages, errors: compiled.errors, code: null, data: null });
-      } else if (dataPath) {
-        const execResult = compileAndExecute(queryStr, dataPath, joinPath || null);
-        setResult({ query: queryStr, stages: execResult.stages, errors: execResult.errors, code: execResult.code || compiled.code, data: execResult.result });
+        setResult({ query: queryStr, stages: compiled.stages, errors: compiled.errors, code: null, data: null, mutationSummary: '' });
+      } else if (session) {
+        const execResult = executeProgram(queryStr, session, { joinSession });
+        if (execResult.errors.length === 0 && execResult.mutated) {
+          saveDatabase(session);
+          setStatus(`Saved - ${execResult.mutationSummary}`);
+        } else if (execResult.errors.length === 0) {
+          setStatus('Query executed');
+        }
+        setResult({
+          query: queryStr,
+          stages: execResult.stages,
+          errors: execResult.errors,
+          code: execResult.code || compiled.code,
+          data: execResult.result,
+          mutationSummary: execResult.mutationSummary,
+        });
       } else {
-        setResult({ query: queryStr, stages: compiled.stages, errors: [], code: compiled.code, data: null });
+        setResult({ query: queryStr, stages: compiled.stages, errors: [], code: compiled.code, data: null, mutationSummary: '' });
       }
     } catch (e) {
       setResult({
         query: queryStr,
         stages: [{ name: 'Error', status: 'error' }],
         errors: [{ phase: 'system', message: e.message }],
-        code: null, data: null,
+        code: null, data: null, mutationSummary: '',
       });
     }
     setMode('result');
@@ -235,33 +256,51 @@ function App({ initialDataPath, initialJoinPath }) {
               isFocused: mode === 'data',
               limit: Math.min(10, dataItems.length),
               onSelect: item => {
-                setDataPath(item.value);
-                setDataError(null);
-                setMode('query');
+                if (item.value === '__create__') {
+                  setDataPathInput('');
+                  setDataError(null);
+                  setMode('dataPath');
+                } else {
+                  openDatabase(item.value);
+                }
               },
             })
+          ),
+          dataError && h(Box, { marginTop: 1 },
+            h(Text, null, colors.error(dataError))
           ),
           h(Box, { marginTop: 1 },
             h(Text, null, colors.dimText('↑↓ or j/k to choose - Enter to confirm - Ctrl+C to exit'))
           )
         )
       );
-    } else {
-      children.push(
-        h(Box, { key: 'data-mode', flexDirection: 'column' },
-          h(Text, null, colors.secondary('📂 Enter path to JSON data file:')),
-          h(Box, { marginTop: 1 },
-            h(Text, null, `${colors.muted('>')} ${dataPath}${colors.primary('█')}`)
-          ),
-          dataError && h(Box, { marginTop: 1 },
-            h(Text, null, colors.error(dataError))
-          ),
-          h(Box, { marginTop: 1 },
-            h(Text, null, colors.dimText('Example: data/users.json - Press Enter to confirm - Ctrl+C to exit'))
-          )
-        )
-      );
     }
+  }
+
+  if (mode === 'dataPath') {
+    children.push(
+      h(Box, { key: 'data-path-mode', flexDirection: 'column' },
+        h(Text, null, colors.secondary('📂 Enter database JSON path:')),
+        h(Box, { marginTop: 1 },
+          h(Text, null, colors.muted('> ')),
+          h(TextInput, {
+            value: dataPathInput,
+            onChange: value => {
+              setDataError(null);
+              setDataPathInput(value);
+            },
+            onSubmit: openDatabase,
+            showCursor: true,
+          })
+        ),
+        dataError && h(Box, { marginTop: 1 },
+          h(Text, null, colors.error(dataError))
+        ),
+        h(Box, { marginTop: 1 },
+          h(Text, null, colors.dimText('Example: data/db.json - missing .json files are created on first save'))
+        )
+      )
+    );
   }
 
   // Query input mode
@@ -269,11 +308,18 @@ function App({ initialDataPath, initialJoinPath }) {
     children.push(
       h(Box, { key: 'query-mode', flexDirection: 'column' },
         h(Text, null, colors.muted(`📂 ${dataPath ? dataPath.split(/[\\/]/).pop() : 'no file'}`)),
+        status && h(Text, null, colors.dimText(status)),
         h(Box, { marginTop: 1 },
-          h(Text, null, `${colors.secondary('Query:')} ${highlightSQL(query)}${colors.primary('█')}`)
+          h(Text, null, colors.secondary('Query: ')),
+          h(TextInput, {
+            value: query,
+            onChange: setQuery,
+            onSubmit: executeQuery,
+            showCursor: true,
+          })
         ),
         h(Box, { marginTop: 1 },
-          h(Text, null, colors.dimText('Enter to run • ↑↓ history • Ctrl+Q quit'))
+          h(Text, null, colors.dimText('Enter to run • ←→ edit • ↑↓ history • Ctrl+Q quit'))
         )
       )
     );
@@ -313,6 +359,14 @@ function App({ initialDataPath, initialJoinPath }) {
       });
       resultChildren.push(
         h(Box, { key: 'errors', flexDirection: 'column', marginTop: 1 }, ...errorItems)
+      );
+    }
+
+    if (result.mutationSummary && result.errors.length === 0) {
+      resultChildren.push(
+        h(Box, { key: 'mutation-summary', marginTop: 1 },
+          h(Text, null, colors.success(result.mutationSummary))
+        )
       );
     }
 
@@ -372,11 +426,11 @@ let joinPath = null;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--data' || args[i] === '-d') {
-    dataPath = resolveDataPath(args[++i]);
+    dataPath = resolveDatabasePath(args[++i]);
   } else if (args[i] === '--join' || args[i] === '-j') {
-    joinPath = resolveDataPath(args[++i]);
+    joinPath = resolveDatabasePath(args[++i]);
   } else if (!dataPath) {
-    dataPath = resolveDataPath(args[i]);
+    dataPath = resolveDatabasePath(args[i]);
   }
 }
 

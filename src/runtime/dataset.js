@@ -8,7 +8,7 @@ export function collectionNameFromPath(filePath) {
 
 export function normalizeDataset(value, filePath = null) {
   if (Array.isArray(value)) {
-    if (!isArrayOfObjects(value)) {
+    if (!isCollectionArray(value)) {
       throw new CompilerError('runtime', 'Unsupported JSON dataset: root array must contain objects only', null);
     }
     const name = collectionNameFromPath(filePath);
@@ -18,17 +18,21 @@ export function normalizeDataset(value, filePath = null) {
   if (isPlainObject(value)) {
     const collections = {};
     for (const [key, candidate] of Object.entries(value)) {
-      if (Array.isArray(candidate) && isArrayOfObjects(candidate)) {
-        collections[key] = candidate;
+      if (!Array.isArray(candidate)) {
+        throw new CompilerError(
+          'runtime',
+          `Unsupported JSON database: collection '${key}' must be an array of objects`,
+          null
+        );
       }
-    }
-
-    if (Object.keys(collections).length === 0) {
-      throw new CompilerError(
-        'runtime',
-        'Unsupported JSON dataset: root object must contain at least one array-of-objects collection',
-        null
-      );
+      if (!isCollectionArray(candidate)) {
+        throw new CompilerError(
+          'runtime',
+          `Unsupported JSON database: collection '${key}' must contain objects only`,
+          null
+        );
+      }
+      collections[key] = candidate;
     }
 
     return buildDataset(collections);
@@ -58,8 +62,8 @@ function buildDataset(collections) {
   return { data, schema };
 }
 
-function isArrayOfObjects(value) {
-  return Array.isArray(value) && value.length > 0 && value.every(isPlainObject);
+function isCollectionArray(value) {
+  return Array.isArray(value) && value.every(isPlainObject);
 }
 
 function isPlainObject(value) {

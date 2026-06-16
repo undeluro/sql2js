@@ -1,6 +1,6 @@
 // Quick test script — verify the compiler pipeline and runtime behavior
 
-import { compile, compileAndExecute } from './pipeline.js';
+import { compile, compileAndExecute, createDatabaseSession, executeProgram } from './pipeline.js';
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -104,11 +104,18 @@ runTest('Accepts top-level object with collection arrays', () => {
   const file = writeJson('collections.json', {
     users: [{ id: 1, name: 'Ala' }],
     orders: [{ id: 10, userId: 1, total: 100 }],
-    metadata: { source: 'test' },
   });
   const result = compileAndExecute('SELECT total FROM orders;', file);
   assertNoErrors(result);
   assert(result.result[0].total === 100, 'Expected order collection from object root');
+});
+
+runTest('Accepts empty database object for new databases', () => {
+  const file = writeJson('empty.json', {});
+  const session = createDatabaseSession(file);
+  const result = executeProgram("CREATE COLLECTION people FROM [{ id: 1, name: 'Ala' }]; SELECT name FROM people;", session);
+  assertNoErrors(result);
+  assert(result.result[0].name === 'Ala', 'Expected CREATE COLLECTION to work in an empty database');
 });
 
 runTest('Rejects array of primitives', () => {
@@ -125,7 +132,7 @@ runTest('Rejects mixed root arrays', () => {
 runTest('Rejects object with no collection arrays', () => {
   const file = writeJson('object.json', { name: 'Ala' });
   const result = compileAndExecute('SELECT name FROM object;', file);
-  assertHasError(result, 'root object must contain at least one array-of-objects collection');
+  assertHasError(result, "collection 'name' must be an array of objects");
 });
 
 runTest('Rejects non-json file paths and directories', () => {
@@ -203,6 +210,54 @@ runTest('--output and --write-dataset write pretty JSON', () => {
   const dataset = JSON.parse(readFileSync(datasetFile, 'utf-8'));
   assert(output[0].name === 'Ola', 'Expected selected result to be written');
   assert(dataset.users.some(user => user.id === 99), 'Expected modified dataset to be written');
+});
+
+runTest('-f executes .s2j files and --save persists the database', () => {
+  const dbFile = join(tmpDir, 'script-db.json');
+  const scriptFile = join(tmpDir, 'seed.s2j');
+  writeFileSync(scriptFile, `
+    CREATE COLLECTION people FROM [{ id: 1, name: 'Ala', age: 20 }];
+    INSERT INTO people VALUE { id: 2, name: 'Ola', age: 21 };
+    UPDATE people SET age = age + 1 WHERE id = 2;
+    SELECT name, age FROM people ORDER BY id ASC;
+  `, 'utf-8');
+
+  const output = execFileSync(process.execPath, [
+    resolve(rootDir, 'src/index.js'),
+    '-f',
+    scriptFile,
+    '-d',
+    dbFile,
+    '--save',
+  ], { cwd: rootDir, encoding: 'utf-8' });
+
+  const selected = JSON.parse(output);
+  const saved = JSON.parse(readFileSync(dbFile, 'utf-8'));
+  assert(selected[1].age === 22, 'Expected .s2j result to include updated row');
+  assert(saved.people[1].age === 22, 'Expected --save to persist script mutations');
+});
+
+runTest('-e and -f together fail clearly', () => {
+  const scriptFile = join(tmpDir, 'noop.s2j');
+  writeFileSync(scriptFile, 'SELECT * FROM users;', 'utf-8');
+
+  let failed = false;
+  try {
+    execFileSync(process.execPath, [
+      resolve(rootDir, 'src/index.js'),
+      '-e',
+      'SELECT * FROM users;',
+      '-f',
+      scriptFile,
+      '-d',
+      resolve(dataDir, 'users.json'),
+    ], { cwd: rootDir, encoding: 'utf-8', stdio: 'pipe' });
+  } catch (error) {
+    failed = true;
+    assert(String(error.stderr).includes('mutually exclusive'), 'Expected mutually exclusive error');
+  }
+
+  assert(failed, 'Expected command to fail');
 });
 
 console.log(`\nResults: ${passed}/${total} tests passed\n`);
