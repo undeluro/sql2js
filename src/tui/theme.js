@@ -134,7 +134,7 @@ export function pipelineBar(stages) {
   }).join(colors.muted(' → '));
 }
 
-export function formatTable(rows, columns) {
+export function formatTable(rows, columns, maxWidth = Math.max(20, (process.stdout.columns || 100) - 4)) {
   if (!rows || rows.length === 0) return colors.dimText('  (no results)');
 
   // Calculate column widths
@@ -146,10 +146,10 @@ export function formatTable(rows, columns) {
     }, 0);
     return Math.min(Math.max(headerLen, maxDataLen), 30);
   });
-  const maxWidth = Math.max(20, (process.stdout.columns || 100) - 4);
+  const usableWidth = Math.max(12, Math.floor(maxWidth) - 2);
   const tableWidth = () => widths.reduce((sum, width) => sum + width, 0) + (columns.length - 1) * 3;
 
-  while (tableWidth() > maxWidth && Math.max(...widths) > 4) {
+  while (tableWidth() > usableWidth && Math.max(...widths) > 4) {
     const widestIndex = widths.indexOf(Math.max(...widths));
     widths[widestIndex]--;
   }
