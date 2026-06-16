@@ -5,7 +5,7 @@
 // Uses React.createElement instead of JSX (no build step needed)
 // ──────────────────────────────────────────────
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { render, Box, Text, useApp, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import TextInput from 'ink-text-input';
@@ -23,6 +23,12 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 const h = React.createElement;
 const EXCLUDED_DIRS = new Set(['.git', 'node_modules']);
 const TITLE = figlet.textSync('sql2js');
+
+function clearTerminal() {
+  if (process.stdout.isTTY) {
+    process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+  }
+}
 
 // ── Detect data file from CLI args ───────────
 function resolveDatabasePath(arg) {
@@ -98,6 +104,69 @@ function enterAlternateScreen() {
   };
 }
 
+function QueryEditor({ value, onChange, onSubmit, onHistoryPrev, onHistoryNext, isActive }) {
+  const [cursor, setCursor] = useState(value.length);
+  const internalChange = useRef(false);
+
+  useEffect(() => {
+    if (internalChange.current) {
+      internalChange.current = false;
+    } else {
+      setCursor(value.length);
+    }
+  }, [value]);
+
+  useInput((input, key) => {
+    if (!isActive) return;
+
+    if (key.return) {
+      onSubmit(value);
+      return;
+    }
+
+    if (key.upArrow) {
+      onHistoryPrev();
+      return;
+    }
+
+    if (key.downArrow) {
+      onHistoryNext();
+      return;
+    }
+
+    if (key.leftArrow) {
+      setCursor(current => Math.max(0, current - 1));
+      return;
+    }
+
+    if (key.rightArrow) {
+      setCursor(current => Math.min(value.length, current + 1));
+      return;
+    }
+
+    if (key.backspace || key.delete) {
+      if (cursor === 0) return;
+      internalChange.current = true;
+      onChange(value.slice(0, cursor - 1) + value.slice(cursor));
+      setCursor(current => Math.max(0, current - 1));
+      return;
+    }
+
+    if (!key.ctrl && !key.meta && input) {
+      internalChange.current = true;
+      onChange(value.slice(0, cursor) + input + value.slice(cursor));
+      setCursor(current => current + input.length);
+    }
+  }, { isActive });
+
+  const before = value.slice(0, cursor);
+  const current = value[cursor];
+  const after = value.slice(cursor + (current ? 1 : 0));
+  const renderedCursor = current ? colors.primary.inverse(current) : colors.primary('█');
+
+  return h(Text, null, `${highlightSQL(before)}${renderedCursor}${highlightSQL(after)}`);
+}
+
 // ── Main App Component ───────────────────────
 
 function App({ initialDataPath, initialJoinPath }) {
@@ -119,7 +188,11 @@ function App({ initialDataPath, initialJoinPath }) {
   const dataItems = useMemo(() => jsonFiles.map(filePath => ({
     label: formatFileLabel(filePath),
     value: filePath,
-  })).concat({ label: '+ Create new database...', value: '__create__' }), [jsonFiles]);
+  })), [jsonFiles]);
+  const databaseItems = useMemo(() => ([
+    { label: '+ Create new database...', value: '__create__' },
+    ...dataItems,
+  ]), [dataItems]);
 
   useEffect(() => {
     if (initialDataPath) {
@@ -136,28 +209,12 @@ function App({ initialDataPath, initialJoinPath }) {
     }
 
     if (mode === 'query') {
-      if (key.upArrow && history.length > 0) {
-        const idx = historyIdx < history.length - 1 ? historyIdx + 1 : historyIdx;
-        setHistoryIdx(idx);
-        setQuery(history[history.length - 1 - idx]);
-        return;
-      }
-      if (key.downArrow) {
-        if (historyIdx > 0) {
-          setHistoryIdx(historyIdx - 1);
-          setQuery(history[history.length - historyIdx]);
-        } else {
-          setHistoryIdx(-1);
-          setQuery('');
-        }
-        return;
-      }
-
       return;
     }
 
     if (mode === 'result') {
       if (key.return || key.escape || input === ' ') {
+        clearTerminal();
         setMode('query');
         setQuery('');
         return;
@@ -230,6 +287,23 @@ function App({ initialDataPath, initialJoinPath }) {
     setMode('result');
   }
 
+  function navigateHistoryPrev() {
+    if (history.length === 0) return;
+    const idx = historyIdx < history.length - 1 ? historyIdx + 1 : historyIdx;
+    setHistoryIdx(idx);
+    setQuery(history[history.length - 1 - idx]);
+  }
+
+  function navigateHistoryNext() {
+    if (historyIdx > 0) {
+      setHistoryIdx(historyIdx - 1);
+      setQuery(history[history.length - historyIdx]);
+    } else {
+      setHistoryIdx(-1);
+      setQuery('');
+    }
+  }
+
   // ── Render ─────────────────────────────────
 
   const children = [];
@@ -246,15 +320,15 @@ function App({ initialDataPath, initialJoinPath }) {
 
   // Data file input mode
   if (mode === 'data') {
-    if (dataItems.length > 0) {
+    if (databaseItems.length > 0) {
       children.push(
         h(Box, { key: 'data-mode', flexDirection: 'column' },
           h(Text, null, colors.secondary('📂 Select JSON data file:')),
           h(Box, { marginTop: 1 },
             h(SelectInput, {
-              items: dataItems,
+              items: databaseItems,
               isFocused: mode === 'data',
-              limit: Math.min(10, dataItems.length),
+              limit: Math.min(10, databaseItems.length),
               onSelect: item => {
                 if (item.value === '__create__') {
                   setDataPathInput('');
@@ -311,11 +385,13 @@ function App({ initialDataPath, initialJoinPath }) {
         status && h(Text, null, colors.dimText(status)),
         h(Box, { marginTop: 1 },
           h(Text, null, colors.secondary('Query: ')),
-          h(TextInput, {
+          h(QueryEditor, {
             value: query,
             onChange: setQuery,
             onSubmit: executeQuery,
-            showCursor: true,
+            onHistoryPrev: navigateHistoryPrev,
+            onHistoryNext: navigateHistoryNext,
+            isActive: mode === 'query',
           })
         ),
         h(Box, { marginTop: 1 },

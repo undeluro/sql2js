@@ -78,7 +78,8 @@ const SQL_KEYWORDS = new Set([
   'SELECT', 'FROM', 'WHERE', 'ORDER', 'BY', 'LIMIT',
   'UNNEST', 'AS', 'AND', 'OR', 'NOT', 'ASC', 'DESC',
   'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'NULL',
-  'JOIN', 'ON', 'TRUE', 'FALSE',
+  'JOIN', 'ON', 'TRUE', 'FALSE', 'CREATE', 'COLLECTION',
+  'INSERT', 'INTO', 'VALUE', 'UPDATE', 'SET', 'DELETE',
 ]);
 
 export function highlightSQL(sql) {
@@ -145,15 +146,22 @@ export function formatTable(rows, columns) {
     }, 0);
     return Math.min(Math.max(headerLen, maxDataLen), 30);
   });
+  const maxWidth = Math.max(20, (process.stdout.columns || 100) - 4);
+  const tableWidth = () => widths.reduce((sum, width) => sum + width, 0) + (columns.length - 1) * 3;
 
-  const sep = colors.muted(widths.map(w => '─'.repeat(w + 2)).join('┬'));
+  while (tableWidth() > maxWidth && Math.max(...widths) > 4) {
+    const widestIndex = widths.indexOf(Math.max(...widths));
+    widths[widestIndex]--;
+  }
+
+  const sep = colors.muted(widths.map(w => '─'.repeat(w)).join('─┼─'));
   const header = columns.map((col, i) =>
-    colors.bright(col.padEnd(widths[i]))
+    colors.bright(truncate(col, widths[i]).padEnd(widths[i]))
   ).join(colors.muted(' │ '));
 
   const dataRows = rows.map((row, rowIdx) => {
     const line = columns.map((col, i) => {
-      const val = String(row[col] ?? 'null').slice(0, 30);
+      const val = truncate(String(row[col] ?? 'null'), widths[i]);
       return val.padEnd(widths[i]);
     }).join(colors.muted(' │ '));
     return rowIdx % 2 === 0 ? colors.text(line) : colors.dimText(line);
@@ -164,4 +172,10 @@ export function formatTable(rows, columns) {
     `  ${sep}`,
     ...dataRows.map(r => `  ${r}`),
   ].join('\n');
+}
+
+function truncate(value, width) {
+  if (value.length <= width) return value;
+  if (width <= 1) return value.slice(0, width);
+  return value.slice(0, width - 1) + '…';
 }
