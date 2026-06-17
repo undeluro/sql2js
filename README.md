@@ -181,6 +181,224 @@ SELECT name FROM users WHERE email ILIKE '%@EXAMPLE.COM';
 
 ---
 
+## Rozszerzone przykłady użycia
+
+Poniższe przykłady pokazują typowe scenariusze testowania kompilatora i runtime'u. Zapytania można uruchamiać w TUI albo przez `-e`, np.:
+
+```bash
+node src/index.js -e "SELECT name FROM users LIMIT 3;" -d data/users.json
+```
+
+### Filtrowanie, sortowanie i aliasy
+
+```sql
+-- Projekcja z aliasami kolumn
+SELECT name AS userName, age AS userAge
+FROM users
+WHERE age >= 18
+ORDER BY age DESC
+LIMIT 5;
+
+-- Warunek z AND, OR, NOT i nawiasami
+SELECT name, age, profile.score
+FROM users
+WHERE (age > 25 AND profile.active = true) OR NOT address.city = 'Warszawa'
+ORDER BY profile.score DESC;
+
+-- Porównanie tekstu czułe i nieczułe na wielkość liter
+SELECT name FROM users WHERE name LIKE 'Ali%';
+SELECT email FROM users WHERE email ILIKE '%@EXAMPLE.COM';
+SELECT name FROM users WHERE name NOT ILIKE 'ewa%';
+```
+
+### Pola zagnieżdżone, tablice i agregaty
+
+```sql
+-- Bezpośredni dostęp do pól obiektów
+SELECT name, address.city, profile.active
+FROM users
+WHERE profile.score >= 80;
+
+-- Rozwinięcie tablicy na wiele wierszy
+SELECT name, tag
+FROM users
+UNNEST(tags) AS tag
+WHERE tag = 'developer';
+
+-- Agregaty na tablicach wewnątrz rekordu
+SELECT name, COUNT(orders)
+FROM users
+WHERE COUNT(orders) > 2;
+
+-- Agregaty na polu obiektu w tablicy
+SELECT name, SUM(orders.total), AVG(orders.total), MIN(orders.total), MAX(orders.total)
+FROM users
+ORDER BY name ASC;
+```
+
+### Mutacje danych
+
+```sql
+-- Utworzenie nowej kolekcji
+CREATE COLLECTION tasks FROM [
+  { id: 1, title: 'Parser', done: false },
+  { id: 2, title: 'Codegen', done: false }
+];
+
+-- Dodanie rekordu
+INSERT INTO tasks VALUE { id: 3, title: 'Tests', done: false };
+
+-- Aktualizacja jednego lub wielu rekordów
+UPDATE tasks
+SET done = true
+WHERE title = 'Parser';
+
+-- Aktualizacja pola zagnieżdżonego
+UPDATE users
+SET profile.score = profile.score + 1
+WHERE profile.active = true;
+
+-- Usunięcie rekordów spełniających warunek
+DELETE FROM tasks
+WHERE done = true;
+```
+
+W TUI mutacje zapisują się automatycznie do aktywnej bazy. W trybie CLI trzeba dodać `--save`, jeśli wynik ma nadpisać plik z `-d`:
+
+```bash
+node src/index.js -e "INSERT INTO users VALUE { id: 99, name: 'Test', age: 20 };" -d data/users.json --save
+```
+
+### JOIN różnych typów
+
+Do przykładów z osobnym plikiem zamówień można użyć:
+
+```bash
+node src/index.js -e "SELECT u.name, o.product FROM users AS u JOIN orders AS o ON u.id = o.userId;" -d data/users.json -j data/orders.json
+```
+
+```sql
+-- Domyślny JOIN działa jak INNER JOIN
+SELECT u.name, o.product, o.total
+FROM users AS u
+JOIN orders AS o ON u.id = o.userId;
+
+-- Jawny INNER JOIN
+SELECT u.name, o.product
+FROM users AS u
+INNER JOIN orders AS o ON u.id = o.userId
+WHERE o.total > 1000;
+
+-- LEFT JOIN zachowuje wszystkich użytkowników z lewej strony
+SELECT u.name, o.product
+FROM users AS u
+LEFT JOIN orders AS o ON u.id = o.userId;
+
+-- RIGHT JOIN zachowuje wszystkie rekordy z prawej strony
+SELECT u.name, o.product
+FROM users AS u
+RIGHT JOIN orders AS o ON u.id = o.userId;
+
+-- FULL JOIN zachowuje niedopasowane rekordy z obu stron
+SELECT u.name, o.product
+FROM users AS u
+FULL JOIN orders AS o ON u.id = o.userId;
+
+-- SELECT * po JOIN ukrywa pola techniczne aliasów
+-- Konflikty nazw z prawej strony dostają prefiks aliasu, np. o.id
+SELECT *
+FROM users AS u
+LEFT OUTER JOIN orders AS o ON u.id = o.userId;
+
+-- Pola z prawej strony można pisać przez alias
+SELECT u.name, o.status, o.total
+FROM users AS u
+JOIN orders AS o ON u.id = o.userId;
+
+-- Unikalne, niekonfliktujące pola z prawej strony mogą być użyte bez aliasu
+SELECT name, product, total
+FROM users AS u
+JOIN orders AS o ON u.id = o.userId;
+```
+
+### NATURAL JOIN
+
+`NATURAL JOIN` dopasowuje rekordy po wspólnych polach najwyższego poziomu. Przykładowa baza:
+
+```json
+{
+  "lefts": [
+    { "id": 1, "code": "x", "leftValue": "L1" },
+    { "id": 2, "code": "y", "leftValue": "L2" }
+  ],
+  "rights": [
+    { "id": 1, "code": "x", "rightValue": "R1" },
+    { "id": 2, "code": "z", "rightValue": "R2" }
+  ]
+}
+```
+
+```sql
+-- Dopasowanie po wspólnych polach id oraz code
+SELECT *
+FROM lefts NATURAL JOIN rights;
+
+-- Warianty zewnętrzne też są obsługiwane
+SELECT leftValue, rightValue
+FROM lefts NATURAL LEFT JOIN rights;
+
+SELECT leftValue, rightValue
+FROM lefts NATURAL FULL JOIN rights;
+```
+
+### Operacje zbiorowe i unikalność wyników
+
+Projekt nie ma osobnego słowa kluczowego `UNIQUE`. Operacje `UNION`, `INTERSECT` i `EXCEPT` działają jak operacje zbiorowe, czyli usuwają duplikaty wierszy na podstawie wartości JSON.
+
+```sql
+-- UNION: suma wyników bez duplikatów
+SELECT name FROM users
+UNION
+SELECT name FROM customers
+ORDER BY name;
+
+-- INTERSECT: tylko wspólne wiersze
+SELECT name FROM users
+INTERSECT
+SELECT name FROM customers;
+
+-- EXCEPT: wiersze z lewej strony, których nie ma po prawej
+SELECT name FROM users
+EXCEPT
+SELECT name FROM customers
+ORDER BY name
+LIMIT 10;
+
+-- Duplikaty są usuwane dla całych obiektów wynikowych
+SELECT name, age FROM users
+UNION
+SELECT name, age FROM users;
+```
+
+### Skrypty `.s2j`
+
+Plik `commands.s2j` może zawierać wiele instrukcji wykonywanych po kolei:
+
+```sql
+CREATE COLLECTION people FROM [{ id: 1, name: 'Ala', age: 20 }];
+INSERT INTO people VALUE { id: 2, name: 'Ola', age: 21 };
+UPDATE people SET age = age + 1 WHERE id = 2;
+SELECT name, age FROM people ORDER BY id ASC;
+```
+
+Uruchomienie z zapisem zmian:
+
+```bash
+node src/index.js -f commands.s2j -d db.json --save
+```
+
+---
+
 ## Opis tokenów
 
 Tokeny są podzielone na słowa kluczowe, literały, identyfikatory oraz operatory/znaki przestankowe. Słowa kluczowe są case-insensitive. Białe znaki i komentarze liniowe `--` są pomijane.
@@ -454,6 +672,8 @@ Skróty w TUI:
 - `Enter` — wykonanie instrukcji,
 - `Left` / `Right` — przesuwanie kursora w aktualnej instrukcji,
 - `Up` / `Down` — historia instrukcji,
+- `Ctrl+O` — wybór lub zmiana aktywnej bazy danych,
+- `Ctrl+D` — pokazanie albo ukrycie wygenerowanego kodu JavaScript,
 - `Ctrl+Q` albo `Ctrl+C` — wyjście.
 
 ### Tryb jednorazowy CLI
@@ -537,14 +757,47 @@ node src/index.js --help
 # Błąd leksykalny
 node src/index.js -e "SELECT name FROM users WHERE age > @;" -d data/users.json
 
+# Błąd leksykalny: niedozwolony znak w wyrażeniu
+node src/index.js -e "SELECT name FROM users WHERE age # 18;" -d data/users.json
+
 # Błąd składniowy
 node src/index.js -e "SELECT name users;" -d data/users.json
+
+# Błąd składniowy: brak średnika w pliku skryptu
+node src/index.js -f broken-script.s2j -d db.json
 
 # Błąd semantyczny
 node src/index.js -e "SELECT missingField FROM users;" -d data/users.json
 
+# Błąd semantyczny: nieistniejąca kolekcja
+node src/index.js -e "SELECT name FROM missing;" -d data/users.json
+
+# Błąd semantyczny: INSERT do nieistniejącej kolekcji
+node src/index.js -e "INSERT INTO missing VALUE { id: 1 };" -d data/users.json
+
+# Błąd semantyczny: UPDATE nieistniejącego pola przy znanym schemacie
+node src/index.js -e "UPDATE users SET missingField = 1 WHERE id = 1;" -d data/users.json
+
+# Błąd semantyczny: UNNEST wymaga tablicy
+node src/index.js -e "SELECT name FROM users UNNEST(age) AS item;" -d data/users.json
+
+# Błąd semantyczny: agregat wymaga tablicy
+node src/index.js -e "SELECT SUM(age) FROM users;" -d data/users.json
+
+# Błąd semantyczny: JOIN wymaga warunku ON, jeśli nie jest NATURAL JOIN
+node src/index.js -e "SELECT * FROM users JOIN orders;" -d data/users.json -j data/orders.json
+
+# Błąd semantyczny: NATURAL JOIN bez wspólnych pól najwyższego poziomu
+node src/index.js -e "SELECT * FROM lefts NATURAL JOIN unrelated;" -d natural.json
+
 # Błąd runtime
 node src/index.js -e "SELECT name FROM users;" -d data
+
+# Błąd runtime: niepoprawny JSON w pliku bazy
+node src/index.js -e "SELECT name FROM users;" -d broken.json
+
+# Błąd argumentów CLI: -e i -f są wzajemnie wykluczające
+node src/index.js -e "SELECT * FROM users;" -f commands.s2j -d data/users.json
 ```
 
 Przykładowy format błędu:
@@ -556,6 +809,16 @@ Przykładowy format błędu:
   expected: FROM
   offending text: "users"
 ```
+
+Rozróżnienie faz błędów pomaga wskazać, gdzie zatrzymał się pipeline:
+
+| Faza | Co oznacza | Przykład |
+|---|---|---|
+| `lexical` | Lexer nie potrafi rozpoznać znaku lub tokenu. | `@`, `#` w wyrażeniu. |
+| `syntax` | Parser dostał poprawne tokeny, ale w złej kolejności. | `SELECT name users;` |
+| `semantic` | Zapytanie ma poprawną składnię, ale nie zgadza się ze schematem lub regułami języka. | Nieznana kolekcja, zły `UNNEST`, brak `ON` w `JOIN`. |
+| `compiletime` | Błąd podczas budowy AST albo generowania JavaScriptu. | Nieobsłużony typ węzła AST. |
+| `runtime` | Kod został wygenerowany, ale nie udało się załadować lub przetworzyć danych. | Katalog zamiast pliku `.json`, uszkodzony JSON. |
 
 ---
 

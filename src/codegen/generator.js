@@ -414,10 +414,14 @@ export default class CodeGenerator {
 
   _aggregateToJS(expr, env) {
     const segments = expr.path.segments;
-    const rootPath = new PathLike([segments[0]]);
+    const [first, second, ...tailAfterAlias] = segments;
+    const isAliasQualified = env?.aliases?.has(first) && second;
+    const rootSegments = isAliasQualified ? [first, second] : [first];
+    const valueSegments = isAliasQualified ? tailAfterAlias : segments.slice(1);
+    const rootPath = new PathLike(rootSegments);
     const arrRoot = this._pathToAccessor(rootPath, env);
-    const needsMap = segments.length > 1;
-    const subPath = segments.slice(1).map(segment => `?.${segment}`).join('');
+    const needsMap = valueSegments.length > 0;
+    const subPath = valueSegments.map(segment => `?.${segment}`).join('');
     const valuesExpr = needsMap ? `${arrRoot}.map(__el => __el${subPath})` : arrRoot;
 
     switch (expr.func) {

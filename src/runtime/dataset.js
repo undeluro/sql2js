@@ -179,6 +179,11 @@ function mergeArraySchemas(schemas, nullable) {
 function mergeValueSchemas(schemas) {
   if (schemas.length === 0) return { kind: 'unknown' };
 
+  const knownSchemas = schemas.filter(schema => schema.kind !== 'unknown');
+  if (knownSchemas.length > 0 && knownSchemas.length < schemas.length) {
+    return mergeValueSchemas(knownSchemas);
+  }
+
   const first = schemas[0];
   if (!schemas.every(schema => schema.kind === first.kind)) {
     return { kind: 'mixed', nullable: schemas.some(schema => schema.nullable) };

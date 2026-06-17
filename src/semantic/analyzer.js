@@ -268,11 +268,11 @@ export default class SemanticAnalyzer {
           this._error('Aggregate function requires a path argument', expr.loc);
           return null;
         }
-        const schema = this._analyzePath(expr.path, { requireKnown: Boolean(this.schema) });
-        if (schema && schema.kind !== 'array') {
+        const schema = this._analyzeAggregatePath(expr.path, Boolean(this.schema));
+        if (schema?.arraySchema && schema.arraySchema.kind !== 'array') {
           this._error(`Aggregate function '${expr.func}' requires an array path`, expr.loc);
         }
-        return schema;
+        return schema?.arraySchema || null;
       }
 
       case 'Path':
@@ -308,20 +308,77 @@ export default class SemanticAnalyzer {
 
     const resolved = this._resolvePathRoot(path, collection);
     if (resolved.dynamic) return null;
-    if (!resolved.collection) {
-      if (requireKnown) this._error(`Unknown path root '${path.segments[0]}'`, path.loc);
-      return null;
+    if (resolved.collection) {
+      return this._lookupPathSchema(resolved.collection, resolved.segments, path, requireKnown);
     }
 
-    let current = this.schema.collections[resolved.collection];
+    const sourceAlias = [...this.aliases.values()].find(alias => alias.kind === 'source');
+    const sourceSchema = sourceAlias
+      ? this._lookupPathSchema(sourceAlias.name, path.segments, path, false)
+      : null;
+    if (sourceSchema) return sourceSchema;
+
+    const joinMatches = [...this.aliases.values()]
+      .filter(alias => alias.kind === 'join')
+      .map(alias => this._lookupPathSchema(alias.name, path.segments, path, false))
+      .filter(Boolean);
+
+    if (joinMatches.length === 1) return joinMatches[0];
+
+    const hasKnownCollectionWithoutSchema = [sourceAlias, ...[...this.aliases.values()].filter(alias => alias.kind === 'join')]
+      .filter(Boolean)
+      .some(alias => this.knownCollections.has(alias.name) && !this.schema.collections?.[alias.name]);
+
+    if (hasKnownCollectionWithoutSchema) return null;
+
+    if (requireKnown) {
+      this._error(`Unknown path '${path.toString()}'`, path.loc);
+    }
+
+    return null;
+  }
+
+  _analyzeAggregatePath(path, requireKnown = false) {
+    if (!this.schema) return null;
+
+    const [first, second, ...tailAfterAlias] = path.segments;
+    const isAliasQualified = this.aliases.has(first) && second;
+    const rootSegments = isAliasQualified ? [first, second] : [first];
+    const valueSegments = isAliasQualified ? tailAfterAlias : path.segments.slice(1);
+    const rootPath = { ...path, segments: rootSegments, toString: () => rootSegments.join('.') };
+    const arraySchema = this._analyzePath(rootPath, { requireKnown });
+
+    if (!arraySchema || arraySchema.kind !== 'array') {
+      return { arraySchema };
+    }
+
+    if (valueSegments.length > 0) {
+      this._lookupNestedSchema(arraySchema.element, valueSegments, path, requireKnown);
+    }
+
+    return { arraySchema };
+  }
+
+  _lookupPathSchema(collection, segments, path, requireKnown) {
+    let current = this.schema.collections[collection];
     if (!current) {
-      if (requireKnown && !this.knownCollections.has(resolved.collection)) {
-        this._error(`Unknown collection '${resolved.collection}'`, path.loc);
+      if (requireKnown && !this.knownCollections.has(collection)) {
+        this._error(`Unknown collection '${collection}'`, path.loc);
       }
       return null;
     }
 
-    for (const segment of resolved.segments) {
+    return this._lookupNestedSchema(current, segments, path, requireKnown);
+  }
+
+  _lookupNestedSchema(schema, segments, path, requireKnown) {
+    let current = schema;
+
+    if (current.kind === 'unknown' || current.kind === 'mixed') {
+      return null;
+    }
+
+    for (const segment of segments) {
       if (current.kind === 'collection' || current.kind === 'object') {
         current = current.fields?.[segment];
       } else if (current.kind === 'array') {
@@ -332,6 +389,10 @@ export default class SemanticAnalyzer {
 
       if (!current) {
         if (requireKnown) this._error(`Unknown path '${path.toString()}'`, path.loc);
+        return null;
+      }
+
+      if (current.kind === 'unknown' || current.kind === 'mixed') {
         return null;
       }
     }
@@ -355,11 +416,6 @@ export default class SemanticAnalyzer {
 
     if (fallbackCollection) {
       return { collection: fallbackCollection, segments: path.segments };
-    }
-
-    const sourceAlias = [...this.aliases.values()].find(alias => alias.kind === 'source');
-    if (sourceAlias) {
-      return { collection: sourceAlias.name, segments: path.segments };
     }
 
     return { collection: null, segments: path.segments };
