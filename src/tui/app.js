@@ -22,7 +22,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 
 const h = React.createElement;
 const EXCLUDED_DIRS = new Set(['.git', 'node_modules']);
-const TITLE = figlet.textSync('sql2js');
+const TITLE = figlet.textSync('sql2js', { font: 'slant' });
 
 // ── Detect data file from CLI args ───────────
 function resolveDatabasePath(arg) {
@@ -383,7 +383,7 @@ function App({ initialDataPath, initialJoinPath }) {
     const children = [
       h(Box, { key: 'header', flexDirection: 'column', marginBottom: 1 },
         h(Text, null, colors.primary(TITLE)),
-        h(Text, null, `${colors.primary('⚡')} ${colors.muted('SQL-to-JS Compiler for JSON')}`)
+        h(Text, null, colors.muted('🦄 SQL-to-JS Compiler for JSON'))
       ),
     ];
 

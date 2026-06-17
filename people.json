@@ -262,6 +262,21 @@
       "id": 3,
       "name": "Ola",
       "age": 21
+    },
+    {
+      "id": 4,
+      "name": "Dima",
+      "age": 67
+    }
+  ],
+  "legend_status": [
+    {
+      "id": 4,
+      "legend": "true"
+    },
+    {
+      "id": 1,
+      "legend": "false"
     }
   ]
 }
