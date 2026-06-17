@@ -55,6 +55,10 @@ function writeJson(name, value) {
   return file;
 }
 
+function stripAnsi(value) {
+  return value.replace(/\x1B\[[0-9;]*m/g, '');
+}
+
 // Existing SELECT behavior
 
 runTest('SELECT filters nested paths', () => {
@@ -455,6 +459,42 @@ runTest('LIKE and ILIKE support wildcards, negation, and escaping', () => {
   assert(negated.result.length === 2, 'Expected NOT ILIKE to negate the match');
 });
 
+runTest('SELECT path star expands direct object fields with prefixed keys', () => {
+  const result = execute("SELECT name, address.* FROM users WHERE address.city LIKE 'War%' LIMIT 1;");
+  assertNoErrors(result);
+  assert(result.result.length === 1, `Expected 1 wildcard row, got ${result.result.length}`);
+  assert(result.result[0].name === 'Alicja Kowalska', 'Expected normal selected field');
+  assert(result.result[0]['address.city'] === 'Warszawa', 'Expected expanded city field');
+  assert(result.result[0]['address.street'] === 'Marszałkowska 10', 'Expected expanded street field');
+  assert(result.result[0]['address.zip'] === '00-001', 'Expected expanded zip field');
+
+  const aliased = execute('SELECT u.address.* FROM users AS u LIMIT 1;');
+  assertNoErrors(aliased);
+  assert(aliased.result[0]['u.address.city'] === 'Warszawa', 'Expected alias-qualified wildcard prefix');
+
+  const union = execute('SELECT address.* FROM users UNION SELECT address.* FROM users LIMIT 1;');
+  assertNoErrors(union);
+  assert(union.result[0]['address.city'] === 'Warszawa', 'Expected wildcard expansion inside set operations');
+});
+
+runTest('SELECT path star rejects known scalar paths and skips non-object runtime values', () => {
+  assertHasError(execute('SELECT age.* FROM users LIMIT 1;'), "wildcard 'age.*' requires an object path");
+
+  const file = writeJson('wildcard-mixed.json', {
+    users: [
+      { id: 1, meta: { city: 'A', zip: '1' } },
+      { id: 2, meta: null },
+      { id: 3, meta: 'not-object' },
+    ],
+  });
+
+  const result = compileAndExecute('SELECT id, meta.* FROM users ORDER BY id;', file);
+  assertNoErrors(result);
+  assert(result.result[0]['meta.city'] === 'A', 'Expected object row to expand fields');
+  assert(!Object.hasOwn(result.result[1], 'meta.city'), 'Expected null value to emit no wildcard fields');
+  assert(!Object.hasOwn(result.result[2], 'meta.city'), 'Expected scalar runtime value to emit no wildcard fields');
+});
+
 runTest('Table formatting includes later columns and compact JSON cells', () => {
   const table = formatTable([
     { id: 1, address: { city: 'Warszawa' } },
@@ -465,6 +505,18 @@ runTest('Table formatting includes later columns and compact JSON cells', () => 
   assert(table.includes('extra'), 'Expected table to include later-row columns');
   assert(table.includes('{"city":"Warszawa"}'), 'Expected object cell to be JSON');
   assert(table.includes('["x"]'), 'Expected array cell to be JSON');
+});
+
+runTest('Table formatting wraps complete nested values without ellipses', () => {
+  const table = stripAnsi(formatTable([
+    { id: 1, address: { city: 'Warszawa', street: 'Marszałkowska 10', zip: '00-001' } },
+  ], ['id', 'address'], 36));
+
+  assert(!table.includes('…'), 'Expected wrapped table to avoid unicode ellipsis');
+  assert(!table.includes('...'), 'Expected wrapped table to avoid three-dot ellipsis');
+  assert(table.includes('{"city":"'), 'Expected wrapped JSON object start to be visible');
+  assert(table.includes('Warszawa'), 'Expected wrapped JSON object value to be visible');
+  assert(table.includes('"zip"') && table.includes('00-0') && table.includes('01'), 'Expected wrapped JSON object ending value to be visible');
 });
 
 // JSON validation

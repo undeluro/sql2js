@@ -109,6 +109,7 @@ Dla wygody nadal akceptowany jest plik, którego korzeniem jest tablica obiektó
 | Korzeń bazy danych | Obiekt JSON, którego pola są kolekcjami. |
 | Kolekcja | Tablica obiektów JSON. |
 | Nawigacja przez zagnieżdżone obiekty | Dozwolona bezpośrednio: `address.city`. |
+| Rozwijanie obiektu w `SELECT` | `address.*` oraz `u.address.*` rozwijają bezpośrednie pola obiektu do kolumn z prefiksem, np. `address.city`. |
 | Nawigacja przez tablice | Wymaga jawnego `UNNEST(pole) AS alias`. |
 | Agregaty grupowe | `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` operują na wierszach wyniku, z obsługą `GROUP BY`, `HAVING` i `COUNT(*)`. |
 | Funkcje tablicowe | `ARRAY_COUNT`, `ARRAY_SUM`, `ARRAY_AVG`, `ARRAY_MIN`, `ARRAY_MAX` operują na tablicach wewnątrz pojedynczego rekordu. |
@@ -116,6 +117,7 @@ Dla wygody nadal akceptowany jest plik, którego korzeniem jest tablica obiektó
 | Wynik `SELECT *` po JOIN | Pola techniczne aliasów są ukryte; konflikty z prawej strony dostają prefiks aliasu, np. `p.id`. |
 | Operacje zbiorowe | `UNION`, `INTERSECT`, `EXCEPT` działają bez duplikatów; końcowe `ORDER BY` i `LIMIT` dotyczą całego wyniku. |
 | Dopasowanie tekstu | `LIKE` jest czuły na wielkość liter, `ILIKE` ignoruje wielkość liter; `%` i `_` są wildcardami. |
+| Wyświetlanie tabel w TUI | Zagnieżdżone obiekty i tablice są pokazywane jako pełny, zwijany tekst JSON bez skracania wielokropkiem. |
 | Mutacje w TUI | Po poprawnym `CREATE`, `INSERT`, `UPDATE`, `DELETE` zmiany są automatycznie zapisywane do aktywnej bazy. |
 | Mutacje w CLI | Domyślnie nie nadpisują pliku wejściowego; zapis do `-d` wymaga `--save`. |
 | Skrypty | Pliki `.s2j` zawierają instrukcje zakończone średnikami. |
@@ -145,6 +147,9 @@ WHERE age < 18;
 
 -- Prosty filtr z zagnieżdżoną ścieżką
 SELECT name, address.city FROM users WHERE age > 18 ORDER BY name ASC LIMIT 10;
+
+-- Płytkie rozwinięcie pól obiektu address do kolumn address.city, address.street itd.
+SELECT name, address.* FROM users;
 
 -- Rozwinięcie tablicy przez UNNEST
 SELECT name, tag FROM users UNNEST(tags) AS tag WHERE tag = 'admin';
@@ -671,7 +676,8 @@ selectList
     ;
 
 selectItem
-    : expr (AS IDENTIFIER)?
+    : path DOT STAR
+    | expr (AS IDENTIFIER)?
     ;
 
 source
@@ -819,8 +825,9 @@ W TUI można wybrać istniejącą bazę lub utworzyć nową. Po poprawnych instr
 Skróty w TUI:
 
 - `Enter` — wykonanie instrukcji,
-- `Left` / `Right` — przesuwanie kursora w aktualnej instrukcji,
-- `Up` / `Down` — historia instrukcji,
+- `Shift+Enter` albo `Ctrl+J` — wstawienie nowej linii w edytorze zapytania,
+- `Left` / `Right` / `Up` / `Down` — przesuwanie kursora w aktualnej instrukcji wieloliniowej,
+- `Up` / `Down` na pierwszej albo ostatniej linii — historia instrukcji,
 - `Ctrl+O` — wybór lub zmiana aktywnej bazy danych,
 - `Ctrl+D` — pokazanie albo ukrycie wygenerowanego kodu JavaScript,
 - `Ctrl+Q` albo `Ctrl+C` — wyjście.
@@ -990,7 +997,8 @@ Testy obejmują między innymi:
 - wykonanie mutacji i zapytań,
 - uruchamianie skryptów `.s2j`,
 - zapis przez `--save`, `--output`, `--write-dataset`,
-- regresję dla wariantów `JOIN`, `NATURAL JOIN`, operacji zbiorowych, `LIKE`/`ILIKE`, `UNNEST`, funkcji `ARRAY_*`, agregatów grupowych, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`.
+- regresję dla wariantów `JOIN`, `NATURAL JOIN`, operacji zbiorowych, `LIKE`/`ILIKE`, `UNNEST`, funkcji `ARRAY_*`, agregatów grupowych, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`,
+- rozwijanie `path.*`, pełne wyświetlanie zagnieżdżonych wartości w tabelach i edytor wieloliniowy w TUI.
 
 ---
 

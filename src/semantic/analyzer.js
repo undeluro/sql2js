@@ -205,11 +205,27 @@ export default class SemanticAnalyzer {
         this._error('SELECT list is empty', query.loc);
       }
       for (const item of sel) {
+        if (item.type === 'SelectWildcard') {
+          this._analyzeSelectWildcard(item, usesGrouping);
+          continue;
+        }
         this._analyzeExpr(item.expr);
         if (usesGrouping) {
           this._validateGroupedExpression(item.expr, groupKeys, 'SELECT');
         }
       }
+    }
+  }
+
+  _analyzeSelectWildcard(item, usesGrouping) {
+    if (usesGrouping) {
+      this._error(`SELECT wildcard '${item.path.toString()}.*' cannot be used with GROUP BY or aggregate functions`, item.loc);
+      return;
+    }
+
+    const schema = this._analyzePath(item.path, { requireKnown: false });
+    if (schema && schema.kind !== 'object' && schema.kind !== 'collection') {
+      this._error(`SELECT wildcard '${item.path.toString()}.*' requires an object path`, item.loc);
     }
   }
 

@@ -46,7 +46,8 @@ selectList
     ;
 
 selectItem
-    : expr (AS IDENTIFIER)?
+    : path DOT STAR                       # SelectWildcardItem
+    | expr (AS IDENTIFIER)?               # SelectExprItem
     ;
 
 source

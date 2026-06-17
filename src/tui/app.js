@@ -128,6 +128,7 @@ function getCollectionSummaries(dbSession) {
 function QueryEditor({ value, onChange, onSubmit, onHistoryPrev, onHistoryNext, isActive }) {
   const [cursor, setCursor] = useState(value.length);
   const internalChange = useRef(false);
+  const preferredColumn = useRef(null);
 
   useEffect(() => {
     if (internalChange.current) {
@@ -140,27 +141,49 @@ function QueryEditor({ value, onChange, onSubmit, onHistoryPrev, onHistoryNext, 
   useInput((input, key) => {
     if (!isActive) return;
 
+    if ((key.ctrl && input === 'j') || input === '\n' || (key.return && key.shift)) {
+      internalChange.current = true;
+      preferredColumn.current = null;
+      onChange(value.slice(0, cursor) + '\n' + value.slice(cursor));
+      setCursor(current => current + 1);
+      return;
+    }
+
     if (key.return) {
       onSubmit(value);
       return;
     }
 
     if (key.upArrow) {
+      if (canMoveVertically(value, cursor, -1)) {
+        const next = moveCursorVertically(value, cursor, -1, preferredColumn);
+        setCursor(next);
+        return;
+      }
+      preferredColumn.current = null;
       onHistoryPrev();
       return;
     }
 
     if (key.downArrow) {
+      if (canMoveVertically(value, cursor, 1)) {
+        const next = moveCursorVertically(value, cursor, 1, preferredColumn);
+        setCursor(next);
+        return;
+      }
+      preferredColumn.current = null;
       onHistoryNext();
       return;
     }
 
     if (key.leftArrow) {
+      preferredColumn.current = null;
       setCursor(current => Math.max(0, current - 1));
       return;
     }
 
     if (key.rightArrow) {
+      preferredColumn.current = null;
       setCursor(current => Math.min(value.length, current + 1));
       return;
     }
@@ -168,6 +191,7 @@ function QueryEditor({ value, onChange, onSubmit, onHistoryPrev, onHistoryNext, 
     if (key.backspace || key.delete) {
       if (cursor === 0) return;
       internalChange.current = true;
+      preferredColumn.current = null;
       onChange(value.slice(0, cursor - 1) + value.slice(cursor));
       setCursor(current => Math.max(0, current - 1));
       return;
@@ -175,6 +199,7 @@ function QueryEditor({ value, onChange, onSubmit, onHistoryPrev, onHistoryNext, 
 
     if (!key.ctrl && !key.meta && input) {
       internalChange.current = true;
+      preferredColumn.current = null;
       onChange(value.slice(0, cursor) + input + value.slice(cursor));
       setCursor(current => current + input.length);
     }
@@ -186,6 +211,39 @@ function QueryEditor({ value, onChange, onSubmit, onHistoryPrev, onHistoryNext, 
   const renderedCursor = current ? colors.primary.inverse(current) : colors.primary('█');
 
   return h(Text, null, `${highlightSQL(before)}${renderedCursor}${highlightSQL(after)}`);
+}
+
+function cursorPosition(value, cursor) {
+  const before = value.slice(0, cursor);
+  const lines = before.split('\n');
+  return {
+    line: lines.length - 1,
+    column: lines[lines.length - 1].length,
+  };
+}
+
+function lineStartOffsets(value) {
+  const starts = [0];
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === '\n') starts.push(i + 1);
+  }
+  return starts;
+}
+
+function canMoveVertically(value, cursor, direction) {
+  const { line } = cursorPosition(value, cursor);
+  const lineCount = value.split('\n').length;
+  return direction < 0 ? line > 0 : line < lineCount - 1;
+}
+
+function moveCursorVertically(value, cursor, direction, preferredColumn) {
+  const starts = lineStartOffsets(value);
+  const lines = value.split('\n');
+  const position = cursorPosition(value, cursor);
+  const targetLine = Math.max(0, Math.min(lines.length - 1, position.line + direction));
+  const desiredColumn = preferredColumn.current ?? position.column;
+  preferredColumn.current = desiredColumn;
+  return starts[targetLine] + Math.min(desiredColumn, lines[targetLine].length);
 }
 
 // ── Main App Component ───────────────────────
@@ -460,7 +518,7 @@ function App({ initialDataPath, initialJoinPath }) {
             })
           ),
           h(Box, { marginTop: 1 },
-            h(Text, null, colors.dimText('Enter run - ←→ edit - ↑↓ history - Ctrl+O switch DB - Ctrl+D JS - Ctrl+Q quit'))
+            h(Text, null, colors.dimText('Enter run - Shift+Enter/Ctrl+J newline - ←→↑↓ edit - Ctrl+O DB - Ctrl+D JS - Ctrl+Q quit'))
           )
         )
       );

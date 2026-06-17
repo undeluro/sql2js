@@ -100,6 +100,14 @@ export class SelectItemNode {
   }
 }
 
+export class SelectWildcardNode {
+  constructor(path, loc) {
+    this.type = 'SelectWildcard';
+    this.path = path;
+    this.loc = loc;
+  }
+}
+
 export class SourceNode {
   constructor(name, alias, loc) {
     this.type = 'Source';

@@ -60,6 +60,10 @@ export default class CodeGenerator {
     lines.push(`${indent(2)}__defineAlias(out, rightAlias, right ?? null);`);
     lines.push(`${indent(2)}return out;`);
     lines.push(`${indent(1)}};`);
+    lines.push(`${indent(1)}const __expandWildcard = (value, prefix) => {`);
+    lines.push(`${indent(2)}if (!value || typeof value !== 'object' || Array.isArray(value)) return {};`);
+    lines.push(`${indent(2)}return Object.fromEntries(Object.entries(value).map(([key, val]) => [\`\${prefix}.\${key}\`, val]));`);
+    lines.push(`${indent(1)}};`);
     lines.push(`${indent(1)}const __stableKey = (value) => JSON.stringify(value, (_key, candidate) => {`);
     lines.push(`${indent(2)}if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate;`);
     lines.push(`${indent(2)}return Object.fromEntries(Object.keys(candidate).sort().map(key => [key, candidate[key]]));`);
@@ -223,14 +227,11 @@ export default class CodeGenerator {
       const items = Array.isArray(sel) ? sel : [sel];
       lines.push('');
       lines.push(`${indent(1)}// SELECT`);
-      const projections = items.map(item => {
-        const key = item.alias || this._exprToLabel(item.expr);
-        const val = this._exprToJS(item.expr, env);
-        return `${indent(3)}${JSON.stringify(key)}: ${val}`;
-      });
-      lines.push(`${indent(1)}${resultVar} = ${resultVar}.map(row => ({`);
+      const projections = items.map(item => this._selectProjectionToJS(item, env, indent));
+      lines.push(`${indent(1)}${resultVar} = ${resultVar}.map(row => Object.assign(`);
+      lines.push(`${indent(2)}{},`);
       lines.push(projections.join(',\n'));
-      lines.push(`${indent(1)}}));`);
+      lines.push(`${indent(1)}));`);
     }
   }
 
@@ -273,16 +274,24 @@ export default class CodeGenerator {
     }
 
     const items = Array.isArray(sel) ? sel : [sel];
-    const projections = items.map(item => {
-      const key = item.alias || this._exprToLabel(item.expr);
-      const val = this._exprToJS(item.expr, groupEnv);
-      return `${indent(3)}${JSON.stringify(key)}: ${val}`;
-    });
+    const projections = items.map(item => this._selectProjectionToJS(item, groupEnv, indent));
     lines.push('');
     lines.push(`${indent(1)}// GROUP SELECT`);
-    lines.push(`${indent(1)}${resultVar} = ${resultVar}.map(${groupVar} => ({`);
+    lines.push(`${indent(1)}${resultVar} = ${resultVar}.map(${groupVar} => Object.assign(`);
+    lines.push(`${indent(2)}{},`);
     lines.push(projections.join(',\n'));
-    lines.push(`${indent(1)}}));`);
+    lines.push(`${indent(1)}));`);
+  }
+
+  _selectProjectionToJS(item, env, indent) {
+    if (item.type === 'SelectWildcard') {
+      const val = this._pathToAccessor(item.path, env);
+      return `${indent(2)}__expandWildcard(${val}, ${JSON.stringify(item.path.toString())})`;
+    }
+
+    const key = item.alias || this._exprToLabel(item.expr);
+    const val = this._exprToJS(item.expr, env);
+    return `${indent(2)}{ ${JSON.stringify(key)}: ${val} }`;
   }
 
   _joinToJS(query, lines, indent, resultVar, srcAlias) {

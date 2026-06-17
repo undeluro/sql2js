@@ -7,6 +7,7 @@ import JsonQueryVisitor from '../generated/JsonQueryVisitor.js';
 import JsonQueryParser from '../generated/JsonQueryParser.js';
 import {
   ProgramNode, QueryNode, SelectAllNode, SelectItemNode,
+  SelectWildcardNode,
   SetOperationNode,
   CreateCollectionNode, InsertNode, UpdateNode, DeleteNode, AssignmentNode,
   SourceNode, JoinNode, UnnestNode,
@@ -156,11 +157,15 @@ export default class ASTBuilder extends JsonQueryVisitor {
     return ctx.selectItem().map(si => this.visit(si));
   }
 
-  visitSelectItem(ctx) {
+  visitSelectExprItem(ctx) {
     const expr = this.visit(ctx.expr());
     const identifiers = ctx.IDENTIFIER();
     const alias = identifiers ? identifiers.getText() : null;
     return new SelectItemNode(expr, alias, locFrom(ctx));
+  }
+
+  visitSelectWildcardItem(ctx) {
+    return new SelectWildcardNode(this.visit(ctx.path()), locFrom(ctx));
   }
 
   // ── FROM / JOIN / UNNEST ─────────────────────
