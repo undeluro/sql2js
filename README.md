@@ -110,7 +110,8 @@ Dla wygody nadal akceptowany jest plik, którego korzeniem jest tablica obiektó
 | Kolekcja | Tablica obiektów JSON. |
 | Nawigacja przez zagnieżdżone obiekty | Dozwolona bezpośrednio: `address.city`. |
 | Nawigacja przez tablice | Wymaga jawnego `UNNEST(pole) AS alias`. |
-| Agregaty | `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` operują na tablicach wewnątrz rekordu. |
+| Agregaty grupowe | `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` operują na wierszach wyniku, z obsługą `GROUP BY`, `HAVING` i `COUNT(*)`. |
+| Funkcje tablicowe | `ARRAY_COUNT`, `ARRAY_SUM`, `ARRAY_AVG`, `ARRAY_MIN`, `ARRAY_MAX` operują na tablicach wewnątrz pojedynczego rekordu. |
 | JOIN | `INNER`, `LEFT`, `RIGHT`, `FULL` oraz `NATURAL JOIN` między kolekcjami. |
 | Wynik `SELECT *` po JOIN | Pola techniczne aliasów są ukryte; konflikty z prawej strony dostają prefiks aliasu, np. `p.id`. |
 | Operacje zbiorowe | `UNION`, `INTERSECT`, `EXCEPT` działają bez duplikatów; końcowe `ORDER BY` i `LIMIT` dotyczą całego wyniku. |
@@ -148,8 +149,14 @@ SELECT name, address.city FROM users WHERE age > 18 ORDER BY name ASC LIMIT 10;
 -- Rozwinięcie tablicy przez UNNEST
 SELECT name, tag FROM users UNNEST(tags) AS tag WHERE tag = 'admin';
 
--- Agregat na tablicy wewnątrz rekordu
-SELECT name, COUNT(orders) FROM customers WHERE COUNT(orders) > 3;
+-- Funkcja tablicowa na tablicy wewnątrz rekordu
+SELECT name, ARRAY_COUNT(orders) FROM customers WHERE ARRAY_COUNT(orders) > 3;
+
+-- Agregat grupowy po wierszach
+SELECT address.city, COUNT(*), AVG(age)
+FROM users
+GROUP BY address.city
+HAVING COUNT(*) > 1;
 
 -- JOIN dwóch kolekcji
 SELECT u.name, o.product, o.total
@@ -225,15 +232,126 @@ FROM users
 UNNEST(tags) AS tag
 WHERE tag = 'developer';
 
--- Agregaty na tablicach wewnątrz rekordu
-SELECT name, COUNT(orders)
+-- Funkcje tablicowe na tablicach wewnątrz rekordu
+SELECT name, ARRAY_COUNT(orders)
 FROM users
-WHERE COUNT(orders) > 2;
+WHERE ARRAY_COUNT(orders) > 2;
 
--- Agregaty na polu obiektu w tablicy
-SELECT name, SUM(orders.total), AVG(orders.total), MIN(orders.total), MAX(orders.total)
+-- Funkcje tablicowe na polu obiektu w tablicy
+SELECT name, ARRAY_SUM(orders.total), ARRAY_AVG(orders.total), ARRAY_MIN(orders.total), ARRAY_MAX(orders.total)
 FROM users
 ORDER BY name ASC;
+
+-- Agregaty grupowe po wierszach
+SELECT address.city, COUNT(*), SUM(age), AVG(age), MIN(age), MAX(age)
+FROM users
+GROUP BY address.city
+HAVING COUNT(*) > 1
+ORDER BY address.city ASC;
+
+-- Łączenie obu poziomów: najpierw suma tablicy w rekordzie, potem suma po grupie
+SELECT address.city, SUM(ARRAY_SUM(orders.total))
+FROM users
+GROUP BY address.city;
+
+-- COUNT(*) liczy wszystkie wiersze po filtrze WHERE
+SELECT COUNT(*)
+FROM users
+WHERE age >= 18;
+
+-- COUNT(pole) liczy tylko wiersze, w których pole nie jest null / missing
+SELECT COUNT(email), COUNT(profile.score)
+FROM users;
+
+-- SUM / AVG / MIN / MAX bez GROUP BY zwracają jeden wiersz dla całej kolekcji
+SELECT COUNT(*), SUM(age), AVG(age), MIN(age), MAX(age)
+FROM users;
+
+-- Grupowanie po jednym polu zagnieżdżonym
+SELECT address.city, COUNT(*), AVG(age)
+FROM users
+GROUP BY address.city;
+
+-- Grupowanie po kilku kluczach
+SELECT address.city, profile.active, COUNT(*), MIN(age), MAX(age)
+FROM users
+GROUP BY address.city, profile.active
+ORDER BY address.city ASC;
+
+-- HAVING filtruje już policzone grupy, a nie pojedyncze rekordy
+SELECT address.city, COUNT(*), AVG(age)
+FROM users
+GROUP BY address.city
+HAVING COUNT(*) >= 2 AND AVG(age) > 25;
+
+-- COUNT(*) można łączyć z COUNT(pole), żeby wykryć brakujące wartości
+SELECT address.city, COUNT(*), COUNT(email)
+FROM users
+GROUP BY address.city
+HAVING COUNT(*) > COUNT(email);
+
+-- ARRAY_COUNT działa na tablicy w pojedynczym rekordzie
+SELECT name, ARRAY_COUNT(tags), ARRAY_COUNT(orders)
+FROM users
+WHERE ARRAY_COUNT(tags) > 0;
+
+-- ARRAY_SUM / ARRAY_AVG / ARRAY_MIN / ARRAY_MAX na tablicy liczb
+CREATE COLLECTION metrics FROM [
+  { id: 1, scores: [10, 20, 30] },
+  { id: 2, scores: [5, 15] },
+  { id: 3, scores: [] }
+];
+
+SELECT id, ARRAY_SUM(scores), ARRAY_AVG(scores), ARRAY_MIN(scores), ARRAY_MAX(scores)
+FROM metrics;
+
+-- ARRAY_* na polu obiektu w tablicy, np. orders.total
+SELECT name,
+       ARRAY_SUM(orders.total),
+       ARRAY_AVG(orders.total),
+       ARRAY_MIN(orders.total),
+       ARRAY_MAX(orders.total)
+FROM users;
+
+-- Agregacja grupowa po wartościach policzonych z tablic w rekordach
+SELECT address.city,
+       COUNT(*),
+       SUM(ARRAY_SUM(orders.total)),
+       AVG(ARRAY_COUNT(orders)),
+       MAX(ARRAY_MAX(orders.total))
+FROM users
+GROUP BY address.city
+HAVING SUM(ARRAY_SUM(orders.total)) > 100;
+
+-- JOIN + agregacja: suma zamówień i liczba zamówień na użytkownika
+SELECT u.name, COUNT(*), SUM(o.total), AVG(o.total), MIN(o.total), MAX(o.total)
+FROM users AS u
+JOIN orders AS o ON u.id = o.userId
+GROUP BY u.name
+HAVING SUM(o.total) > 100;
+
+-- UNNEST + agregacja: najczęściej występujące tagi
+SELECT tag, COUNT(*)
+FROM users
+UNNEST(tags) AS tag
+GROUP BY tag
+HAVING COUNT(*) > 1
+ORDER BY tag ASC;
+
+-- Niepoprawne: agregaty grupowe nie działają w WHERE, do tego służy HAVING
+SELECT address.city, COUNT(*)
+FROM users
+WHERE COUNT(*) > 1
+GROUP BY address.city;
+
+-- Niepoprawne: pole poza agregatem musi być w GROUP BY
+SELECT address.city, name, COUNT(*)
+FROM users
+GROUP BY address.city;
+
+-- Niepoprawne: ARRAY_SUM wymaga tablicy, nie zwykłej liczby
+SELECT ARRAY_SUM(age)
+FROM users;
 ```
 
 ### Mutacje danych
@@ -410,6 +528,8 @@ Tokeny są podzielone na słowa kluczowe, literały, identyfikatory oraz operato
 | `SELECT` | `[Ss][Ee][Ll][Ee][Cc][Tt]` | Projekcja danych. |
 | `FROM` | `[Ff][Rr][Oo][Mm]` | Źródłowa kolekcja. |
 | `WHERE` | `[Ww][Hh][Ee][Rr][Ee]` | Warunek filtrowania. |
+| `GROUP` | `[Gg][Rr][Oo][Uu][Pp]` | Grupowanie wyników. |
+| `HAVING` | `[Hh][Aa][Vv][Ii][Nn][Gg]` | Warunek po agregacji grup. |
 | `ORDER` | `[Oo][Rr][Dd][Ee][Rr]` | Sortowanie. |
 | `BY` | `[Bb][Yy]` | Część `ORDER BY`. |
 | `LIMIT` | `[Ll][Ii][Mm][Ii][Tt]` | Ograniczenie liczby wyników. |
@@ -420,11 +540,16 @@ Tokeny są podzielone na słowa kluczowe, literały, identyfikatory oraz operato
 | `NOT` | `[Nn][Oo][Tt]` | Negacja. |
 | `ASC` | `[Aa][Ss][Cc]` | Sortowanie rosnące. |
 | `DESC` | `[Dd][Ee][Ss][Cc]` | Sortowanie malejące. |
-| `COUNT` | `[Cc][Oo][Uu][Nn][Tt]` | Liczba elementów tablicy. |
-| `SUM` | `[Ss][Uu][Mm]` | Suma elementów tablicy. |
-| `AVG` | `[Aa][Vv][Gg]` | Średnia elementów tablicy. |
-| `MIN_F` | `[Mm][Ii][Nn]` | Minimum tablicy. |
-| `MAX_F` | `[Mm][Aa][Xx]` | Maksimum tablicy. |
+| `COUNT` | `[Cc][Oo][Uu][Nn][Tt]` | Liczba wierszy lub nie-nullowych wartości w grupie. |
+| `SUM` | `[Ss][Uu][Mm]` | Suma wartości w grupie. |
+| `AVG` | `[Aa][Vv][Gg]` | Średnia wartości w grupie. |
+| `MIN_F` | `[Mm][Ii][Nn]` | Minimum wartości w grupie. |
+| `MAX_F` | `[Mm][Aa][Xx]` | Maksimum wartości w grupie. |
+| `ARRAY_COUNT` | `ARRAY_COUNT` case-insensitive | Liczba elementów tablicy w pojedynczym rekordzie. |
+| `ARRAY_SUM` | `ARRAY_SUM` case-insensitive | Suma elementów tablicy w pojedynczym rekordzie. |
+| `ARRAY_AVG` | `ARRAY_AVG` case-insensitive | Średnia elementów tablicy w pojedynczym rekordzie. |
+| `ARRAY_MIN` | `ARRAY_MIN` case-insensitive | Minimum tablicy w pojedynczym rekordzie. |
+| `ARRAY_MAX` | `ARRAY_MAX` case-insensitive | Maksimum tablicy w pojedynczym rekordzie. |
 | `NULL` | `[Nn][Uu][Ll][Ll]` | Literał null. |
 | `JOIN` | `[Jj][Oo][Ii][Nn]` | Łączenie kolekcji. |
 | `ON` | `[Oo][Nn]` | Warunek JOIN. |
@@ -516,6 +641,8 @@ selectCore
       joinClause?
       unnestClause*
       whereClause?
+      groupByClause?
+      havingClause?
     ;
 
 createStmt
@@ -570,6 +697,14 @@ whereClause
     : WHERE expr
     ;
 
+groupByClause
+    : GROUP BY path (COMMA path)*
+    ;
+
+havingClause
+    : HAVING expr
+    ;
+
 orderByClause
     : ORDER BY orderItem (COMMA orderItem)*
     ;
@@ -602,12 +737,26 @@ compOp
     ;
 
 primary
-    : aggFunc LPAREN path RPAREN
+    : aggFunc LPAREN aggregateArg RPAREN
+    | arrayAggFunc LPAREN path RPAREN
     | path
     | literal
     | objectLiteral
     | arrayLiteral
     | LPAREN expr RPAREN
+    ;
+
+aggFunc
+    : COUNT | SUM | AVG | MIN_F | MAX_F
+    ;
+
+arrayAggFunc
+    : ARRAY_COUNT | ARRAY_SUM | ARRAY_AVG | ARRAY_MIN | ARRAY_MAX
+    ;
+
+aggregateArg
+    : STAR
+    | expr
     ;
 
 objectLiteral
@@ -781,8 +930,14 @@ node src/index.js -e "UPDATE users SET missingField = 1 WHERE id = 1;" -d data/u
 # Błąd semantyczny: UNNEST wymaga tablicy
 node src/index.js -e "SELECT name FROM users UNNEST(age) AS item;" -d data/users.json
 
-# Błąd semantyczny: agregat wymaga tablicy
-node src/index.js -e "SELECT SUM(age) FROM users;" -d data/users.json
+# Błąd semantyczny: funkcja ARRAY_* wymaga tablicy
+node src/index.js -e "SELECT ARRAY_SUM(age) FROM users;" -d data/users.json
+
+# Błąd semantyczny: agregat grupowy nie może być użyty w WHERE
+node src/index.js -e "SELECT name FROM users WHERE COUNT(*) > 1;" -d data/users.json
+
+# Błąd semantyczny: zwykłe pole w SELECT musi wystąpić w GROUP BY
+node src/index.js -e "SELECT address.city, name, COUNT(*) FROM users GROUP BY address.city;" -d data/users.json
 
 # Błąd semantyczny: JOIN wymaga warunku ON, jeśli nie jest NATURAL JOIN
 node src/index.js -e "SELECT * FROM users JOIN orders;" -d data/users.json -j data/orders.json
@@ -835,7 +990,7 @@ Testy obejmują między innymi:
 - wykonanie mutacji i zapytań,
 - uruchamianie skryptów `.s2j`,
 - zapis przez `--save`, `--output`, `--write-dataset`,
-- regresję dla wariantów `JOIN`, `NATURAL JOIN`, operacji zbiorowych, `LIKE`/`ILIKE`, `UNNEST`, agregatów, `ORDER BY`, `LIMIT`.
+- regresję dla wariantów `JOIN`, `NATURAL JOIN`, operacji zbiorowych, `LIKE`/`ILIKE`, `UNNEST`, funkcji `ARRAY_*`, agregatów grupowych, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`.
 
 ---
 

@@ -36,6 +36,8 @@ selectCore
       joinClause?
       unnestClause*
       whereClause?
+      groupByClause?
+      havingClause?
     ;
 
 selectList
@@ -68,6 +70,14 @@ unnestClause
 
 whereClause
     : WHERE expr
+    ;
+
+groupByClause
+    : GROUP BY path (COMMA path)*
+    ;
+
+havingClause
+    : HAVING expr
     ;
 
 orderByClause
@@ -116,7 +126,8 @@ expr
     ;
 
 primary
-    : aggFunc LPAREN path RPAREN           # AggExpr
+    : aggFunc LPAREN aggregateArg RPAREN   # AggExpr
+    | arrayAggFunc LPAREN path RPAREN      # ArrayAggExpr
     | path                                  # PathExpr
     | literal                               # LiteralExpr
     | objectLiteral                         # ObjectExpr
@@ -126,6 +137,15 @@ primary
 
 aggFunc
     : COUNT | SUM | AVG | MIN_F | MAX_F
+    ;
+
+arrayAggFunc
+    : ARRAY_COUNT | ARRAY_SUM | ARRAY_AVG | ARRAY_MIN | ARRAY_MAX
+    ;
+
+aggregateArg
+    : STAR
+    | expr
     ;
 
 path
@@ -173,6 +193,8 @@ compOp
 SELECT  : [Ss][Ee][Ll][Ee][Cc][Tt] ;
 FROM    : [Ff][Rr][Oo][Mm] ;
 WHERE   : [Ww][Hh][Ee][Rr][Ee] ;
+GROUP   : [Gg][Rr][Oo][Uu][Pp] ;
+HAVING  : [Hh][Aa][Vv][Ii][Nn][Gg] ;
 ORDER   : [Oo][Rr][Dd][Ee][Rr] ;
 BY      : [Bb][Yy] ;
 LIMIT   : [Ll][Ii][Mm][Ii][Tt] ;
@@ -188,6 +210,11 @@ SUM     : [Ss][Uu][Mm] ;
 AVG     : [Aa][Vv][Gg] ;
 MIN_F   : [Mm][Ii][Nn] ;
 MAX_F   : [Mm][Aa][Xx] ;
+ARRAY_COUNT : [Aa][Rr][Rr][Aa][Yy] '_' [Cc][Oo][Uu][Nn][Tt] ;
+ARRAY_SUM   : [Aa][Rr][Rr][Aa][Yy] '_' [Ss][Uu][Mm] ;
+ARRAY_AVG   : [Aa][Rr][Rr][Aa][Yy] '_' [Aa][Vv][Gg] ;
+ARRAY_MIN   : [Aa][Rr][Rr][Aa][Yy] '_' [Mm][Ii][Nn] ;
+ARRAY_MAX   : [Aa][Rr][Rr][Aa][Yy] '_' [Mm][Aa][Xx] ;
 NULL    : [Nn][Uu][Ll][Ll] ;
 JOIN    : [Jj][Oo][Ii][Nn] ;
 ON      : [Oo][Nn] ;

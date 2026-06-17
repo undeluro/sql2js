@@ -10,7 +10,7 @@ import {
   SetOperationNode,
   CreateCollectionNode, InsertNode, UpdateNode, DeleteNode, AssignmentNode,
   SourceNode, JoinNode, UnnestNode,
-  BinaryExprNode, UnaryExprNode, AggregateNode,
+  BinaryExprNode, UnaryExprNode, AggregateNode, ArrayAggregateNode,
   PathNode, LiteralNode, ObjectLiteralNode, ArrayLiteralNode, OrderItemNode, locFrom,
 } from './nodes.js';
 
@@ -88,11 +88,15 @@ export default class ASTBuilder extends JsonQueryVisitor {
 
     const whereCtx = ctx.whereClause();
     const where = whereCtx ? this.visit(whereCtx) : null;
+    const groupByCtx = ctx.groupByClause();
+    const groupBy = groupByCtx ? groupByCtx.path().map(p => this.visit(p)) : [];
+    const havingCtx = ctx.havingClause();
+    const having = havingCtx ? this.visit(havingCtx) : null;
     const orderBy = [];
     const limit = null;
 
     return new QueryNode({
-      select, from, join, unnest, where, orderBy, limit,
+      select, from, join, unnest, where, groupBy, having, orderBy, limit,
       loc: locFrom(ctx),
     });
   }
@@ -191,6 +195,10 @@ export default class ASTBuilder extends JsonQueryVisitor {
     return this.visit(ctx.expr());
   }
 
+  visitHavingClause(ctx) {
+    return this.visit(ctx.expr());
+  }
+
   // ── ORDER BY ─────────────────────────────────
 
   visitOrderItem(ctx) {
@@ -256,8 +264,16 @@ export default class ASTBuilder extends JsonQueryVisitor {
     const func = ctx.aggFunc().getText().toUpperCase();
     // Normalize MIN_F/MAX_F → MIN/MAX
     const normalizedFunc = func === 'MIN' ? 'MIN' : func === 'MAX' ? 'MAX' : func;
+    const argCtx = ctx.aggregateArg();
+    const isStar = Boolean(argCtx.STAR());
+    const arg = isStar ? null : this.visit(argCtx.expr());
+    return new AggregateNode(normalizedFunc, arg, locFrom(ctx), isStar);
+  }
+
+  visitArrayAggExpr(ctx) {
+    const func = ctx.arrayAggFunc().getText().toUpperCase();
     const path = this.visit(ctx.path());
-    return new AggregateNode(normalizedFunc, path, locFrom(ctx));
+    return new ArrayAggregateNode(func, path, locFrom(ctx));
   }
 
   visitPathExpr(ctx) {

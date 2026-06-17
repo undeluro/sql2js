@@ -210,6 +210,12 @@ export default class CodeGenerator {
       lines.push(`${indent(1)}${resultVar} = ${resultVar}.filter(row => ${filterCode});`);
     }
 
+    if (this._queryUsesGrouping(query)) {
+      this._groupToJS(query, lines, indent, resultVar, env);
+      this._orderAndLimitToJS(query, lines, indent, resultVar, { rowVar: 'row', aliases: new Map() });
+      return;
+    }
+
     this._orderAndLimitToJS(query, lines, indent, resultVar, env);
 
     const sel = query.select;
@@ -226,6 +232,57 @@ export default class CodeGenerator {
       lines.push(projections.join(',\n'));
       lines.push(`${indent(1)}}));`);
     }
+  }
+
+  _groupToJS(query, lines, indent, resultVar, env) {
+    const suffix = this._nextTemp();
+    const groupsVar = `__groups${suffix}`;
+    const keyValuesVar = `__keyValues${suffix}`;
+    const keyVar = `__key${suffix}`;
+    const groupVar = `__group${suffix}`;
+    const groupEnv = this._groupEnv(env, groupVar);
+    const groupKeyExpr = query.groupBy?.length
+      ? `[${query.groupBy.map(path => this._exprToJS(path, env)).join(', ')}]`
+      : `['__all__']`;
+
+    lines.push('');
+    lines.push(`${indent(1)}// GROUP BY / AGGREGATE`);
+    lines.push(`${indent(1)}const ${groupsVar} = new Map();`);
+    lines.push(`${indent(1)}for (const row of ${resultVar}) {`);
+    lines.push(`${indent(2)}const ${keyValuesVar} = ${groupKeyExpr};`);
+    lines.push(`${indent(2)}const ${keyVar} = __stableKey(${keyValuesVar});`);
+    lines.push(`${indent(2)}if (!${groupsVar}.has(${keyVar})) ${groupsVar}.set(${keyVar}, { keyValues: ${keyValuesVar}, rows: [] });`);
+    lines.push(`${indent(2)}${groupsVar}.get(${keyVar}).rows.push(row);`);
+    lines.push(`${indent(1)}}`);
+    if (!query.groupBy?.length) {
+      lines.push(`${indent(1)}if (${groupsVar}.size === 0) ${groupsVar}.set('__all__', { keyValues: ['__all__'], rows: [] });`);
+    }
+    lines.push(`${indent(1)}${resultVar} = [...${groupsVar}.values()];`);
+
+    if (query.having) {
+      const havingCode = this._exprToJS(query.having, groupEnv);
+      lines.push('');
+      lines.push(`${indent(1)}// HAVING`);
+      lines.push(`${indent(1)}${resultVar} = ${resultVar}.filter(${groupVar} => ${havingCode});`);
+    }
+
+    const sel = query.select;
+    if (sel.type === 'SelectAll') {
+      lines.push(`${indent(1)}${resultVar} = ${resultVar}.map(${groupVar} => ${groupVar}.rows[0] ?? {});`);
+      return;
+    }
+
+    const items = Array.isArray(sel) ? sel : [sel];
+    const projections = items.map(item => {
+      const key = item.alias || this._exprToLabel(item.expr);
+      const val = this._exprToJS(item.expr, groupEnv);
+      return `${indent(3)}${JSON.stringify(key)}: ${val}`;
+    });
+    lines.push('');
+    lines.push(`${indent(1)}// GROUP SELECT`);
+    lines.push(`${indent(1)}${resultVar} = ${resultVar}.map(${groupVar} => ({`);
+    lines.push(projections.join(',\n'));
+    lines.push(`${indent(1)}}));`);
   }
 
   _joinToJS(query, lines, indent, resultVar, srcAlias) {
@@ -367,7 +424,10 @@ export default class CodeGenerator {
         return `${expr.op}(${this._exprToJS(expr.operand, env)})`;
 
       case 'Aggregate':
-        return this._aggregateToJS(expr, env);
+        return this._groupAggregateToJS(expr, env);
+
+      case 'ArrayAggregate':
+        return this._arrayAggregateToJS(expr, env);
 
       case 'Path':
         return this._pathToAccessor(expr, env);
@@ -412,7 +472,38 @@ export default class CodeGenerator {
     return `(${left} ${jsOp} ${right})`;
   }
 
-  _aggregateToJS(expr, env) {
+  _groupAggregateToJS(expr, env) {
+    if (!env?.groupVar) {
+      return `/* aggregate ${expr.func} requires grouping context */`;
+    }
+
+    if (expr.isStar) {
+      return `${env.groupVar}.rows.length`;
+    }
+
+    const rowVar = `__aggRow${this._nextTemp()}`;
+    const valueVar = `__values${this._nextTemp()}`;
+    const rowEnv = this._rowEnvForGroupAggregate(env, rowVar);
+    const valueExpr = this._exprToJS(expr.arg, rowEnv);
+    const values = `${env.groupVar}.rows.map(${rowVar} => ${valueExpr}).filter(__v => __v !== null && __v !== undefined)`;
+
+    switch (expr.func) {
+      case 'COUNT':
+        return `(${values}).length`;
+      case 'SUM':
+        return `(() => { const ${valueVar} = ${values}; return ${valueVar}.reduce((__s, __v) => __s + Number(__v || 0), 0); })()`;
+      case 'AVG':
+        return `(() => { const ${valueVar} = ${values}; return ${valueVar}.length ? ${valueVar}.reduce((__s, __v) => __s + Number(__v || 0), 0) / ${valueVar}.length : 0; })()`;
+      case 'MIN':
+        return `(() => { const ${valueVar} = ${values}; return ${valueVar}.length ? Math.min(...${valueVar}.map(Number)) : null; })()`;
+      case 'MAX':
+        return `(() => { const ${valueVar} = ${values}; return ${valueVar}.length ? Math.max(...${valueVar}.map(Number)) : null; })()`;
+      default:
+        return `/* unknown aggregate ${expr.func} */`;
+    }
+  }
+
+  _arrayAggregateToJS(expr, env) {
     const segments = expr.path.segments;
     const [first, second, ...tailAfterAlias] = segments;
     const isAliasQualified = env?.aliases?.has(first) && second;
@@ -425,15 +516,15 @@ export default class CodeGenerator {
     const valuesExpr = needsMap ? `${arrRoot}.map(__el => __el${subPath})` : arrRoot;
 
     switch (expr.func) {
-      case 'COUNT':
+      case 'ARRAY_COUNT':
         return `(Array.isArray(${arrRoot}) ? ${arrRoot}.length : 0)`;
-      case 'SUM':
+      case 'ARRAY_SUM':
         return `(Array.isArray(${arrRoot}) ? ${valuesExpr}.reduce((__s, __v) => __s + Number(__v || 0), 0) : 0)`;
-      case 'AVG':
+      case 'ARRAY_AVG':
         return `(Array.isArray(${arrRoot}) && ${arrRoot}.length ? ${valuesExpr}.reduce((__s, __v) => __s + Number(__v || 0), 0) / ${arrRoot}.length : 0)`;
-      case 'MIN':
+      case 'ARRAY_MIN':
         return `(Array.isArray(${arrRoot}) && ${arrRoot}.length ? Math.min(...${valuesExpr}.map(Number)) : null)`;
-      case 'MAX':
+      case 'ARRAY_MAX':
         return `(Array.isArray(${arrRoot}) && ${arrRoot}.length ? Math.max(...${valuesExpr}.map(Number)) : null)`;
       default:
         return `/* unknown aggregate ${expr.func} */`;
@@ -454,7 +545,8 @@ export default class CodeGenerator {
     const rowVar = env?.rowVar;
     if (!rowVar) return segments.join('?.');
     if (segments.length === 1) return `${rowVar}.${segments[0]}`;
-    return `${rowVar}?.${segments.join('?.')}`;
+    const joinedKey = segments.join('.');
+    return `(Object.hasOwn(${rowVar} ?? {}, ${JSON.stringify(joinedKey)}) ? ${rowVar}[${JSON.stringify(joinedKey)}] : ${rowVar}?.${segments.join('?.')})`;
   }
 
   _literalToJS(expr) {
@@ -469,6 +561,51 @@ export default class CodeGenerator {
       `${JSON.stringify(key)}: ${this._exprToJS(value, env)}`
     );
     return `{ ${entries.join(', ')} }`;
+  }
+
+  _queryUsesGrouping(query) {
+    return (query.groupBy || []).length > 0
+      || this._containsGroupAggregate(query.having)
+      || (Array.isArray(query.select) && query.select.some(item => this._containsGroupAggregate(item.expr)));
+  }
+
+  _containsGroupAggregate(expr) {
+    if (!expr) return false;
+    switch (expr.type) {
+      case 'Aggregate':
+        return true;
+      case 'BinaryExpr':
+        return this._containsGroupAggregate(expr.left) || this._containsGroupAggregate(expr.right);
+      case 'UnaryExpr':
+        return this._containsGroupAggregate(expr.operand);
+      case 'ObjectLiteral':
+        return Object.values(expr.properties).some(value => this._containsGroupAggregate(value));
+      case 'ArrayLiteral':
+        return expr.items.some(item => this._containsGroupAggregate(item));
+      default:
+        return false;
+    }
+  }
+
+  _groupEnv(env, groupVar) {
+    const aliases = new Map();
+    for (const [alias, accessor] of env.aliases || []) {
+      aliases.set(alias, accessor.replace(/^row\b/, `${groupVar}.rows[0]`));
+    }
+    return {
+      rowVar: `${groupVar}.rows[0]`,
+      aliases,
+      groupVar,
+      rowAliases: env.aliases || new Map(),
+    };
+  }
+
+  _rowEnvForGroupAggregate(env, rowVar) {
+    const aliases = new Map();
+    for (const [alias, accessor] of env.rowAliases || []) {
+      aliases.set(alias, accessor.replace(/^row\b/, rowVar));
+    }
+    return { rowVar, aliases };
   }
 
   _nextTemp() {
@@ -494,6 +631,8 @@ export default class CodeGenerator {
       case 'Path':
         return expr.segments.join('.');
       case 'Aggregate':
+        return `${expr.func}(${expr.isStar ? '*' : this._exprToLabel(expr.arg)})`;
+      case 'ArrayAggregate':
         return `${expr.func}(${this._exprToLabel(expr.path)})`;
       case 'Literal':
         return String(expr.value);

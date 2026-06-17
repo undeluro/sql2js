@@ -76,31 +76,8 @@ runTest('UNNEST aliases work in SELECT and WHERE', () => {
   assert(result.result.length === 3, `Expected 3 admin tags, got ${result.result.length}`);
 });
 
-runTest('Aggregates still work', () => {
-  const result = execute('SELECT name, COUNT(orders) FROM users WHERE COUNT(orders) > 2;');
-  assertNoErrors(result);
-  assert(result.result.length === 3, `Expected 3 rows, got ${result.result.length}`);
-});
-
-runTest('Aggregates support array object subfields and empty arrays', () => {
-  const file = writeJson('aggregate-subfields.json', {
-    users: [
-      { name: 'Ala', orders: [{ total: 10 }, { total: 20 }] },
-      { name: 'Ola', orders: [] },
-    ],
-  });
-
-  const result = compileAndExecute('SELECT name, SUM(orders.total), AVG(orders.total), MIN(orders.total), MAX(orders.total) FROM users;', file);
-  assertNoErrors(result);
-  assert(result.result[0]['SUM(orders.total)'] === 30, 'Expected SUM over object subfields');
-  assert(result.result[0]['AVG(orders.total)'] === 15, 'Expected AVG over object subfields');
-  assert(result.result[0]['MIN(orders.total)'] === 10, 'Expected MIN over object subfields');
-  assert(result.result[0]['MAX(orders.total)'] === 20, 'Expected MAX over object subfields');
-  assert(result.result[1]['SUM(orders.total)'] === 0, 'Expected empty arrays to preserve aggregate schema');
-});
-
-runTest('COUNT handles scalar arrays, object arrays, empty arrays, and filters', () => {
-  const file = writeJson('aggregate-count.json', {
+runTest('ARRAY_COUNT handles scalar arrays, object arrays, empty arrays, and filters', () => {
+  const file = writeJson('array-count.json', {
     metrics: [
       { id: 1, nums: [1, 2, 3], entries: [{ amount: 10 }, { amount: 20 }] },
       { id: 2, nums: [], entries: [] },
@@ -108,20 +85,20 @@ runTest('COUNT handles scalar arrays, object arrays, empty arrays, and filters',
     ],
   });
 
-  const result = compileAndExecute('SELECT id, COUNT(nums), COUNT(entries) FROM metrics ORDER BY id;', file);
+  const result = compileAndExecute('SELECT id, ARRAY_COUNT(nums), ARRAY_COUNT(entries) FROM metrics ORDER BY id;', file);
   assertNoErrors(result);
-  assert(result.result[0]['COUNT(nums)'] === 3, 'Expected COUNT to count scalar array values');
-  assert(result.result[0]['COUNT(entries)'] === 2, 'Expected COUNT to count object array values');
-  assert(result.result[1]['COUNT(nums)'] === 0, 'Expected COUNT to return 0 for empty arrays');
-  assert(result.result[2]['COUNT(entries)'] === 1, 'Expected COUNT to handle different row lengths');
+  assert(result.result[0]['ARRAY_COUNT(nums)'] === 3, 'Expected ARRAY_COUNT to count scalar array values');
+  assert(result.result[0]['ARRAY_COUNT(entries)'] === 2, 'Expected ARRAY_COUNT to count object array values');
+  assert(result.result[1]['ARRAY_COUNT(nums)'] === 0, 'Expected ARRAY_COUNT to return 0 for empty arrays');
+  assert(result.result[2]['ARRAY_COUNT(entries)'] === 1, 'Expected ARRAY_COUNT to handle different row lengths');
 
-  const filtered = compileAndExecute('SELECT id FROM metrics WHERE COUNT(nums) > 0 ORDER BY id;', file);
+  const filtered = compileAndExecute('SELECT id FROM metrics WHERE ARRAY_COUNT(nums) > 0 ORDER BY id;', file);
   assertNoErrors(filtered);
-  assert(filtered.result.map(row => row.id).join(',') === '1,3', 'Expected COUNT to work in WHERE');
+  assert(filtered.result.map(row => row.id).join(',') === '1,3', 'Expected ARRAY_COUNT to work in WHERE');
 });
 
-runTest('SUM handles positive, negative, decimal, object subfield, and empty arrays', () => {
-  const file = writeJson('aggregate-sum.json', {
+runTest('ARRAY_SUM, ARRAY_AVG, ARRAY_MIN, and ARRAY_MAX support scalar arrays and object subfields', () => {
+  const file = writeJson('array-aggregates.json', {
     metrics: [
       { id: 1, nums: [1, 2, 3.5], entries: [{ amount: 10 }, { amount: 20.5 }] },
       { id: 2, nums: [], entries: [] },
@@ -129,119 +106,227 @@ runTest('SUM handles positive, negative, decimal, object subfield, and empty arr
     ],
   });
 
-  const result = compileAndExecute('SELECT id, SUM(nums), SUM(entries.amount) FROM metrics ORDER BY id;', file);
+  const result = compileAndExecute('SELECT id, ARRAY_SUM(nums), ARRAY_AVG(nums), ARRAY_MIN(nums), ARRAY_MAX(nums), ARRAY_SUM(entries.amount), ARRAY_AVG(entries.amount), ARRAY_MIN(entries.amount), ARRAY_MAX(entries.amount) FROM metrics ORDER BY id;', file);
   assertNoErrors(result);
-  assert(result.result[0]['SUM(nums)'] === 6.5, 'Expected SUM to add decimal scalar arrays');
-  assert(result.result[0]['SUM(entries.amount)'] === 30.5, 'Expected SUM to add object subfields');
-  assert(result.result[1]['SUM(nums)'] === 0, 'Expected SUM to return 0 for empty arrays');
-  assert(result.result[2]['SUM(nums)'] === 3, 'Expected SUM to add negative numbers');
-  assert(result.result[2]['SUM(entries.amount)'] === 3, 'Expected SUM to add negative object subfields');
+  assert(result.result[0]['ARRAY_SUM(nums)'] === 6.5, 'Expected ARRAY_SUM to add decimal scalar arrays');
+  assert(result.result[0]['ARRAY_AVG(nums)'] === 6.5 / 3, 'Expected ARRAY_AVG to average scalar arrays');
+  assert(result.result[0]['ARRAY_MIN(nums)'] === 1, 'Expected ARRAY_MIN to find scalar minimum');
+  assert(result.result[0]['ARRAY_MAX(nums)'] === 3.5, 'Expected ARRAY_MAX to find scalar maximum');
+  assert(result.result[0]['ARRAY_SUM(entries.amount)'] === 30.5, 'Expected ARRAY_SUM to add object subfields');
+  assert(result.result[0]['ARRAY_AVG(entries.amount)'] === 15.25, 'Expected ARRAY_AVG to average object subfields');
+  assert(result.result[1]['ARRAY_SUM(nums)'] === 0, 'Expected ARRAY_SUM to return 0 for empty arrays');
+  assert(result.result[1]['ARRAY_AVG(nums)'] === 0, 'Expected ARRAY_AVG to return 0 for empty arrays');
+  assert(result.result[1]['ARRAY_MIN(nums)'] === null, 'Expected ARRAY_MIN to return null for empty arrays');
+  assert(result.result[1]['ARRAY_MAX(nums)'] === null, 'Expected ARRAY_MAX to return null for empty arrays');
+  assert(result.result[2]['ARRAY_SUM(nums)'] === 3, 'Expected ARRAY_SUM to add negative numbers');
+  assert(result.result[2]['ARRAY_MIN(entries.amount)'] === -1, 'Expected ARRAY_MIN to handle negative object subfields');
+  assert(result.result[2]['ARRAY_MAX(entries.amount)'] === 4, 'Expected ARRAY_MAX to handle mixed-sign object subfields');
 });
 
-runTest('AVG handles scalar arrays, object subfields, empty arrays, and filters', () => {
-  const file = writeJson('aggregate-avg.json', {
-    metrics: [
-      { id: 1, nums: [2, 4, 6], entries: [{ amount: 10 }, { amount: 20 }] },
-      { id: 2, nums: [], entries: [] },
-      { id: 3, nums: [-2, 0, 5], entries: [{ amount: -1 }, { amount: 4 }] },
-    ],
-  });
-
-  const result = compileAndExecute('SELECT id, AVG(nums), AVG(entries.amount) FROM metrics ORDER BY id;', file);
-  assertNoErrors(result);
-  assert(result.result[0]['AVG(nums)'] === 4, 'Expected AVG to average scalar arrays');
-  assert(result.result[0]['AVG(entries.amount)'] === 15, 'Expected AVG to average object subfields');
-  assert(result.result[1]['AVG(nums)'] === 0, 'Expected AVG to return 0 for empty arrays');
-  assert(result.result[2]['AVG(nums)'] === 1, 'Expected AVG to average negative and positive numbers');
-  assert(result.result[2]['AVG(entries.amount)'] === 1.5, 'Expected AVG to average negative object subfields');
-
-  const filtered = compileAndExecute('SELECT id FROM metrics WHERE AVG(entries.amount) > 10 ORDER BY id;', file);
-  assertNoErrors(filtered);
-  assert(filtered.result.length === 1 && filtered.result[0].id === 1, 'Expected AVG to work in WHERE');
-});
-
-runTest('MIN handles scalar arrays, object subfields, negative values, and empty arrays', () => {
-  const file = writeJson('aggregate-min.json', {
-    metrics: [
-      { id: 1, nums: [3, 1, 2], entries: [{ amount: 10 }, { amount: 20 }] },
-      { id: 2, nums: [], entries: [] },
-      { id: 3, nums: [-2, 0, 5], entries: [{ amount: -1 }, { amount: 4 }] },
-    ],
-  });
-
-  const result = compileAndExecute('SELECT id, MIN(nums), MIN(entries.amount) FROM metrics ORDER BY id;', file);
-  assertNoErrors(result);
-  assert(result.result[0]['MIN(nums)'] === 1, 'Expected MIN to find scalar minimum');
-  assert(result.result[0]['MIN(entries.amount)'] === 10, 'Expected MIN to find object subfield minimum');
-  assert(result.result[1]['MIN(nums)'] === null, 'Expected MIN to return null for empty arrays');
-  assert(result.result[2]['MIN(nums)'] === -2, 'Expected MIN to handle negative scalar values');
-  assert(result.result[2]['MIN(entries.amount)'] === -1, 'Expected MIN to handle negative object subfields');
-});
-
-runTest('MAX handles scalar arrays, object subfields, negative values, and empty arrays', () => {
-  const file = writeJson('aggregate-max.json', {
-    metrics: [
-      { id: 1, nums: [3, 1, 2], entries: [{ amount: 10 }, { amount: 20 }] },
-      { id: 2, nums: [], entries: [] },
-      { id: 3, nums: [-2, 0, 5], entries: [{ amount: -1 }, { amount: 4 }] },
-    ],
-  });
-
-  const result = compileAndExecute('SELECT id, MAX(nums), MAX(entries.amount) FROM metrics ORDER BY id;', file);
-  assertNoErrors(result);
-  assert(result.result[0]['MAX(nums)'] === 3, 'Expected MAX to find scalar maximum');
-  assert(result.result[0]['MAX(entries.amount)'] === 20, 'Expected MAX to find object subfield maximum');
-  assert(result.result[1]['MAX(nums)'] === null, 'Expected MAX to return null for empty arrays');
-  assert(result.result[2]['MAX(nums)'] === 5, 'Expected MAX to handle mixed-sign scalar values');
-  assert(result.result[2]['MAX(entries.amount)'] === 4, 'Expected MAX to handle mixed-sign object subfields');
-});
-
-runTest('Aggregates work with source aliases and aliases in WHERE', () => {
-  const file = writeJson('aggregate-source-alias.json', {
+runTest('ARRAY_* functions work with source aliases and preserve schemas with empty first rows', () => {
+  const file = writeJson('array-alias-empty-first.json', {
     users: [
-      { id: 1, name: 'Ala', orders: [{ total: 10 }, { total: 20 }] },
-      { id: 2, name: 'Ola', orders: [] },
-      { id: 3, name: 'Jan', orders: [{ total: 5 }] },
+      { id: 1, name: 'Empty', orders: [] },
+      { id: 2, name: 'Ala', orders: [{ total: 7 }, { total: 8 }] },
     ],
   });
 
-  const result = compileAndExecute('SELECT u.name, COUNT(u.orders), SUM(u.orders.total), MAX(u.orders.total) FROM users AS u WHERE SUM(u.orders.total) >= 10 ORDER BY u.id;', file);
+  const result = compileAndExecute('SELECT u.name, ARRAY_COUNT(u.orders), ARRAY_SUM(u.orders.total), ARRAY_AVG(u.orders.total), ARRAY_MIN(u.orders.total), ARRAY_MAX(u.orders.total) FROM users AS u ORDER BY u.id;', file);
   assertNoErrors(result);
-  assert(result.result.length === 1, `Expected 1 row after aggregate filter, got ${result.result.length}`);
-  assert(result.result[0]['u.name'] === 'Ala', 'Expected source alias paths to project correctly');
-  assert(result.result[0]['COUNT(u.orders)'] === 2, 'Expected COUNT to work with source alias');
-  assert(result.result[0]['SUM(u.orders.total)'] === 30, 'Expected SUM subfield to work with source alias');
-  assert(result.result[0]['MAX(u.orders.total)'] === 20, 'Expected MAX subfield to work with source alias');
+  assert(result.result[0]['ARRAY_COUNT(u.orders)'] === 0, 'Expected ARRAY_COUNT to work with aliases');
+  assert(result.result[0]['ARRAY_SUM(u.orders.total)'] === 0, 'Expected empty first row to allow ARRAY_SUM subfield');
+  assert(result.result[0]['ARRAY_AVG(u.orders.total)'] === 0, 'Expected empty first row to allow ARRAY_AVG subfield');
+  assert(result.result[0]['ARRAY_MIN(u.orders.total)'] === null, 'Expected empty first row to allow ARRAY_MIN subfield');
+  assert(result.result[0]['ARRAY_MAX(u.orders.total)'] === null, 'Expected empty first row to allow ARRAY_MAX subfield');
+  assert(result.result[1]['ARRAY_SUM(u.orders.total)'] === 15, 'Expected later non-empty rows to keep subfield schema');
+  assert(result.result[1]['ARRAY_AVG(u.orders.total)'] === 7.5, 'Expected later non-empty rows to average correctly');
 });
 
-runTest('Aggregates preserve schemas when the first row has empty arrays', () => {
-  const file = writeJson('aggregate-empty-first.json', {
+runTest('Group aggregates support COUNT star and row-level numeric functions', () => {
+  const file = writeJson('group-aggregates.json', {
     users: [
-      { id: 1, orders: [] },
-      { id: 2, orders: [{ total: 7 }, { total: 8 }] },
+      { id: 1, city: 'Warszawa', age: 20 },
+      { id: 2, city: 'Warszawa', age: 30 },
+      { id: 3, city: 'Krakow', age: 40 },
     ],
   });
 
-  const result = compileAndExecute('SELECT id, SUM(orders.total), AVG(orders.total), MIN(orders.total), MAX(orders.total) FROM users ORDER BY id;', file);
+  const result = compileAndExecute('SELECT city, COUNT(*), COUNT(age), SUM(age), AVG(age), MIN(age), MAX(age) FROM users GROUP BY city ORDER BY city ASC;', file);
   assertNoErrors(result);
-  assert(result.result[0]['SUM(orders.total)'] === 0, 'Expected empty first row to allow SUM subfield');
-  assert(result.result[0]['AVG(orders.total)'] === 0, 'Expected empty first row to allow AVG subfield');
-  assert(result.result[0]['MIN(orders.total)'] === null, 'Expected empty first row to allow MIN subfield');
-  assert(result.result[0]['MAX(orders.total)'] === null, 'Expected empty first row to allow MAX subfield');
-  assert(result.result[1]['SUM(orders.total)'] === 15, 'Expected later non-empty rows to keep subfield schema');
-  assert(result.result[1]['AVG(orders.total)'] === 7.5, 'Expected later non-empty rows to average correctly');
+  assert(result.result.length === 2, `Expected 2 city groups, got ${result.result.length}`);
+  assert(result.result[0].city === 'Krakow' && result.result[0]['COUNT(*)'] === 1, 'Expected Krakow group count');
+  assert(result.result[1].city === 'Warszawa' && result.result[1]['COUNT(*)'] === 2, 'Expected Warszawa group count');
+  assert(result.result[1]['COUNT(age)'] === 2, 'Expected COUNT(field) to count non-null row values');
+  assert(result.result[1]['SUM(age)'] === 50, 'Expected SUM(field) to sum row values');
+  assert(result.result[1]['AVG(age)'] === 25, 'Expected AVG(field) to average row values');
+  assert(result.result[1]['MIN(age)'] === 20, 'Expected MIN(field) to find group minimum');
+  assert(result.result[1]['MAX(age)'] === 30, 'Expected MAX(field) to find group maximum');
 });
 
-runTest('Aggregate semantic checks reject scalar paths and unknown subfields', () => {
-  const file = writeJson('aggregate-invalid.json', {
+runTest('Group aggregates work without GROUP BY as a whole-table aggregate', () => {
+  const file = writeJson('whole-table-aggregate.json', {
     users: [
-      { id: 1, age: 20, orders: [{ total: 10 }] },
+      { id: 1, age: 20 },
+      { id: 2, age: null },
+      { id: 3, age: 40 },
     ],
   });
 
-  assertHasError(compileAndExecute('SELECT SUM(age) FROM users;', file), "Aggregate function 'SUM' requires an array path");
-  assertHasError(compileAndExecute('SELECT COUNT(age) FROM users;', file), "Aggregate function 'COUNT' requires an array path");
-  assertHasError(compileAndExecute('SELECT AVG(orders.missing) FROM users;', file), "Unknown path 'orders.missing'");
+  const result = compileAndExecute('SELECT COUNT(*), COUNT(age), SUM(age), AVG(age), MIN(age), MAX(age) FROM users;', file);
+  assertNoErrors(result);
+  assert(result.result.length === 1, 'Expected whole-table aggregate to return one row');
+  assert(result.result[0]['COUNT(*)'] === 3, 'Expected COUNT(*) to count all rows');
+  assert(result.result[0]['COUNT(age)'] === 2, 'Expected COUNT(field) to skip null values');
+  assert(result.result[0]['SUM(age)'] === 60, 'Expected SUM(field) to skip null values');
+  assert(result.result[0]['AVG(age)'] === 30, 'Expected AVG(field) to skip null values');
+  assert(result.result[0]['MIN(age)'] === 20, 'Expected MIN(field) to skip null values');
+  assert(result.result[0]['MAX(age)'] === 40, 'Expected MAX(field) to skip null values');
+});
+
+runTest('HAVING filters groups and can combine group aggregates with ARRAY_* expressions', () => {
+  const file = writeJson('having-array-aggregate.json', {
+    users: [
+      { city: 'A', orders: [{ total: 5 }, { total: 7 }] },
+      { city: 'A', orders: [] },
+      { city: 'B', orders: [{ total: 3 }] },
+    ],
+  });
+
+  const result = compileAndExecute('SELECT city, COUNT(*), SUM(ARRAY_SUM(orders.total)) FROM users GROUP BY city HAVING SUM(ARRAY_SUM(orders.total)) > 10 ORDER BY city;', file);
+  assertNoErrors(result);
+  assert(result.result.length === 1, `Expected 1 group after HAVING, got ${result.result.length}`);
+  assert(result.result[0].city === 'A', 'Expected HAVING to keep city A');
+  assert(result.result[0]['COUNT(*)'] === 2, 'Expected COUNT(*) inside HAVING query');
+  assert(result.result[0]['SUM(ARRAY_SUM(orders.total))'] === 12, 'Expected SUM over per-row ARRAY_SUM values');
+});
+
+runTest('Group aggregate semantic checks reject invalid mixes and invalid star usage', () => {
+  const file = writeJson('group-invalid.json', {
+    users: [
+      { id: 1, city: 'A', age: 20, orders: [{ total: 10 }] },
+    ],
+  });
+
+  assertHasError(compileAndExecute('SELECT city, age, COUNT(*) FROM users GROUP BY city;', file), 'must appear in GROUP BY');
+  assertHasError(compileAndExecute('SELECT city FROM users HAVING COUNT(*) > 0;', file), 'must appear in GROUP BY');
+  assertHasError(compileAndExecute('SELECT SUM(*) FROM users;', file), "Aggregate function 'SUM' cannot use *");
+  assertHasError(compileAndExecute('SELECT id FROM users WHERE COUNT(*) > 0;', file), 'Aggregate functions are not allowed in WHERE');
+  assertHasError(compileAndExecute('SELECT id, ARRAY_SUM(orders.total) FROM users GROUP BY id;', file), 'must be wrapped in a group aggregate');
+});
+
+runTest('GROUP BY supports multiple keys and nested paths', () => {
+  const file = writeJson('group-multiple-keys.json', {
+    users: [
+      { id: 1, address: { city: 'Warszawa' }, profile: { active: true }, age: 20 },
+      { id: 2, address: { city: 'Warszawa' }, profile: { active: true }, age: 30 },
+      { id: 3, address: { city: 'Warszawa' }, profile: { active: false }, age: 40 },
+      { id: 4, address: { city: 'Krakow' }, profile: { active: true }, age: 50 },
+    ],
+  });
+
+  const result = compileAndExecute('SELECT address.city, profile.active, COUNT(*), SUM(age) FROM users GROUP BY address.city, profile.active ORDER BY address.city ASC;', file);
+  assertNoErrors(result);
+  assert(result.result.length === 3, `Expected 3 grouped rows, got ${result.result.length}`);
+
+  const warszawaActive = result.result.find(row => row['address.city'] === 'Warszawa' && row['profile.active'] === true);
+  const warszawaInactive = result.result.find(row => row['address.city'] === 'Warszawa' && row['profile.active'] === false);
+  const krakowActive = result.result.find(row => row['address.city'] === 'Krakow' && row['profile.active'] === true);
+  assert(warszawaActive?.['COUNT(*)'] === 2, 'Expected Warszawa active users to be grouped together');
+  assert(warszawaActive?.['SUM(age)'] === 50, 'Expected SUM(age) for Warszawa active group');
+  assert(warszawaInactive?.['COUNT(*)'] === 1, 'Expected Warszawa inactive group');
+  assert(krakowActive?.['SUM(age)'] === 50, 'Expected nested path grouping for Krakow');
+});
+
+runTest('Group aggregates work after JOIN', () => {
+  const file = writeJson('join-group-aggregates.json', {
+    users: [
+      { id: 1, name: 'Ala' },
+      { id: 2, name: 'Ola' },
+      { id: 3, name: 'Ela' },
+    ],
+    orders: [
+      { id: 10, userId: 1, total: 40 },
+      { id: 11, userId: 1, total: 70 },
+      { id: 12, userId: 2, total: 90 },
+    ],
+  });
+
+  const result = compileAndExecute('SELECT u.name, COUNT(*), SUM(o.total) FROM users AS u JOIN orders AS o ON u.id = o.userId GROUP BY u.name HAVING SUM(o.total) > 100;', file);
+  assertNoErrors(result);
+  assert(result.result.length === 1, `Expected 1 grouped join row, got ${result.result.length}`);
+  assert(result.result[0]['u.name'] === 'Ala', 'Expected HAVING to keep only Ala');
+  assert(result.result[0]['COUNT(*)'] === 2, 'Expected joined row count per user');
+  assert(result.result[0]['SUM(o.total)'] === 110, 'Expected SUM over joined rows');
+});
+
+runTest('Group aggregates work after UNNEST', () => {
+  const file = writeJson('unnest-group-aggregates.json', {
+    users: [
+      { id: 1, tags: ['admin', 'dev'] },
+      { id: 2, tags: ['admin', 'qa'] },
+      { id: 3, tags: ['dev'] },
+      { id: 4, tags: [] },
+    ],
+  });
+
+  const result = compileAndExecute('SELECT tag, COUNT(*) FROM users UNNEST(tags) AS tag GROUP BY tag HAVING COUNT(*) > 1 ORDER BY tag;', file);
+  assertNoErrors(result);
+  assert(result.result.length === 2, `Expected 2 popular tags, got ${result.result.length}`);
+  assert(result.result[0].tag === 'admin' && result.result[0]['COUNT(*)'] === 2, 'Expected admin tag count');
+  assert(result.result[1].tag === 'dev' && result.result[1]['COUNT(*)'] === 2, 'Expected dev tag count');
+});
+
+runTest('ORDER BY and LIMIT apply after grouped projection', () => {
+  const file = writeJson('group-order-limit.json', {
+    users: [
+      { id: 1, city: 'A', age: 10 },
+      { id: 2, city: 'B', age: 20 },
+      { id: 3, city: 'B', age: 30 },
+      { id: 4, city: 'C', age: 40 },
+    ],
+  });
+
+  const result = compileAndExecute('SELECT city, COUNT(*), SUM(age) FROM users GROUP BY city ORDER BY city DESC LIMIT 2;', file);
+  assertNoErrors(result);
+  assert(result.result.length === 2, `Expected LIMIT to keep 2 groups, got ${result.result.length}`);
+  assert(result.result[0].city === 'C', 'Expected ORDER BY to run after grouped projection');
+  assert(result.result[1].city === 'B', 'Expected descending city order before LIMIT');
+  assert(result.result[1]['COUNT(*)'] === 2, 'Expected group aggregate value to survive ORDER BY/LIMIT');
+});
+
+runTest('COUNT field and numeric aggregates skip null and missing values', () => {
+  const file = writeJson('aggregate-null-missing.json', {
+    users: [
+      { id: 1, score: 10 },
+      { id: 2, score: null },
+      { id: 3 },
+      { id: 4, score: 30 },
+    ],
+  });
+
+  const result = compileAndExecute('SELECT COUNT(*), COUNT(score), SUM(score), AVG(score), MIN(score), MAX(score) FROM users;', file);
+  assertNoErrors(result);
+  assert(result.result[0]['COUNT(*)'] === 4, 'Expected COUNT(*) to include every row');
+  assert(result.result[0]['COUNT(score)'] === 2, 'Expected COUNT(score) to skip null and missing values');
+  assert(result.result[0]['SUM(score)'] === 40, 'Expected SUM(score) to skip null and missing values');
+  assert(result.result[0]['AVG(score)'] === 20, 'Expected AVG(score) to skip null and missing values');
+  assert(result.result[0]['MIN(score)'] === 10, 'Expected MIN(score) to skip null and missing values');
+  assert(result.result[0]['MAX(score)'] === 30, 'Expected MAX(score) to skip null and missing values');
+});
+
+runTest('Grouped query semantics reject invalid HAVING and GROUP BY expressions', () => {
+  const file = writeJson('group-more-invalid.json', {
+    users: [
+      { id: 1, city: 'A', name: 'Ala', age: 20, orders: [{ total: 10 }] },
+      { id: 2, city: 'A', name: 'Ola', age: 30, orders: [] },
+    ],
+  });
+
+  assertHasError(compileAndExecute('SELECT city, COUNT(*) FROM users GROUP BY city HAVING age > 10;', file), 'must appear in GROUP BY');
+  assertHasError(compileAndExecute("SELECT city, COUNT(*) FROM users GROUP BY city HAVING name = 'Ala';", file), 'must appear in GROUP BY');
+  assertHasError(compileAndExecute('SELECT * FROM users GROUP BY city;', file), 'SELECT * cannot be used with GROUP BY');
+  assertHasError(compileAndExecute('SELECT missing, COUNT(*) FROM users GROUP BY missing;', file), "Unknown path 'missing'");
+  assertHasError(compileAndExecute('SELECT city, ARRAY_SUM(orders.total) FROM users HAVING COUNT(*) > 0;', file), 'must be wrapped in a group aggregate');
 });
 
 runTest('JOIN still works with a second JSON file', () => {

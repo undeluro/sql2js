@@ -12,13 +12,15 @@ export class ProgramNode {
 }
 
 export class QueryNode {
-  constructor({ select, from, join, unnest, where, orderBy, limit, loc }) {
+  constructor({ select, from, join, unnest, where, groupBy, having, orderBy, limit, loc }) {
     this.type = 'Query';
     this.select = select;       // SelectAllNode | [SelectItemNode]
     this.from = from;           // SourceNode
     this.join = join || null;   // JoinNode | null
     this.unnest = unnest || []; // [UnnestNode]
     this.where = where || null; // ExprNode | null
+    this.groupBy = groupBy || []; // [PathNode]
+    this.having = having || null; // ExprNode | null
     this.orderBy = orderBy || []; // [OrderItemNode]
     this.limit = limit;         // number | null
     this.loc = loc;
@@ -149,9 +151,20 @@ export class UnaryExprNode {
 }
 
 export class AggregateNode {
-  constructor(func, path, loc) {
+  constructor(func, arg, loc, isStar = false) {
     this.type = 'Aggregate';
     this.func = func;   // 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX'
+    this.arg = arg || null;
+    this.path = arg?.type === 'Path' ? arg : null;
+    this.isStar = isStar;
+    this.loc = loc;
+  }
+}
+
+export class ArrayAggregateNode {
+  constructor(func, path, loc) {
+    this.type = 'ArrayAggregate';
+    this.func = func;   // 'ARRAY_COUNT' | 'ARRAY_SUM' | 'ARRAY_AVG' | 'ARRAY_MIN' | 'ARRAY_MAX'
     this.path = path;
     this.loc = loc;
   }

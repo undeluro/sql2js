@@ -76,8 +76,10 @@ export default class SemanticAnalyzer {
     this._analyzeSource(query, knownCollections);
     this._analyzeJoin(query, knownCollections);
     this._analyzeUnnest(query);
-    this._analyzeSelect(query);
     this._analyzeWhere(query);
+    this._analyzeGroupBy(query);
+    this._analyzeHaving(query);
+    this._analyzeSelect(query);
     this._analyzeOrderBy(query);
     this._analyzeLimit(query);
   }
@@ -190,13 +192,23 @@ export default class SemanticAnalyzer {
 
   _analyzeSelect(query) {
     const sel = query.select;
-    if (sel.type === 'SelectAll') return;
+    const usesGrouping = this._usesGrouping(query);
+    const groupKeys = this._groupKeySet(query);
+    if (sel.type === 'SelectAll') {
+      if (usesGrouping) {
+        this._error('SELECT * cannot be used with GROUP BY or aggregate functions', sel.loc);
+      }
+      return;
+    }
     if (Array.isArray(sel)) {
       if (sel.length === 0) {
         this._error('SELECT list is empty', query.loc);
       }
       for (const item of sel) {
         this._analyzeExpr(item.expr);
+        if (usesGrouping) {
+          this._validateGroupedExpression(item.expr, groupKeys, 'SELECT');
+        }
       }
     }
   }
@@ -204,7 +216,19 @@ export default class SemanticAnalyzer {
   // ── WHERE ──────────────────────────────────
 
   _analyzeWhere(query) {
-    if (query.where) this._analyzeExpr(query.where);
+    if (query.where) this._analyzeExpr(query.where, { allowGroupAggregates: false });
+  }
+
+  _analyzeGroupBy(query) {
+    for (const path of query.groupBy || []) {
+      this._analyzePath(path, { requireKnown: Boolean(this.schema) });
+    }
+  }
+
+  _analyzeHaving(query) {
+    if (!query.having) return;
+    this._analyzeExpr(query.having);
+    this._validateGroupedExpression(query.having, this._groupKeySet(query), 'HAVING');
   }
 
   // ── ORDER BY ───────────────────────────────
@@ -247,28 +271,47 @@ export default class SemanticAnalyzer {
 
   // ── Expression validation (recursive) ──────
 
-  _analyzeExpr(expr) {
+  _analyzeExpr(expr, options = {}) {
     if (!expr) return null;
+    const { allowGroupAggregates = true } = options;
 
     switch (expr.type) {
       case 'BinaryExpr':
-        this._analyzeExpr(expr.left);
-        this._analyzeExpr(expr.right);
+        this._analyzeExpr(expr.left, options);
+        this._analyzeExpr(expr.right, options);
         return null;
 
       case 'UnaryExpr':
-        this._analyzeExpr(expr.operand);
+        this._analyzeExpr(expr.operand, options);
         return null;
 
       case 'Aggregate': {
+        if (!allowGroupAggregates) {
+          this._error('Aggregate functions are not allowed in WHERE; use HAVING for aggregate filters', expr.loc);
+          return null;
+        }
         if (!['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'].includes(expr.func)) {
           this._error(`Unknown aggregate function '${expr.func}'`, expr.loc);
         }
-        if (!expr.path || expr.path.type !== 'Path') {
-          this._error('Aggregate function requires a path argument', expr.loc);
+        if (expr.isStar) {
+          if (expr.func !== 'COUNT') {
+            this._error(`Aggregate function '${expr.func}' cannot use *`, expr.loc);
+          }
           return null;
         }
-        const schema = this._analyzeAggregatePath(expr.path, Boolean(this.schema));
+        if (!expr.arg) {
+          this._error('Aggregate function requires an argument', expr.loc);
+          return null;
+        }
+        this._analyzeExpr(expr.arg, { ...options, allowGroupAggregates: false });
+        return null;
+      }
+
+      case 'ArrayAggregate': {
+        if (!['ARRAY_COUNT', 'ARRAY_SUM', 'ARRAY_AVG', 'ARRAY_MIN', 'ARRAY_MAX'].includes(expr.func)) {
+          this._error(`Unknown array aggregate function '${expr.func}'`, expr.loc);
+        }
+        const schema = this._analyzeArrayAggregatePath(expr.path, Boolean(this.schema));
         if (schema?.arraySchema && schema.arraySchema.kind !== 'array') {
           this._error(`Aggregate function '${expr.func}' requires an array path`, expr.loc);
         }
@@ -283,18 +326,79 @@ export default class SemanticAnalyzer {
 
       case 'ObjectLiteral':
         for (const value of Object.values(expr.properties)) {
-          this._analyzeExpr(value);
+          this._analyzeExpr(value, options);
         }
         return null;
 
       case 'ArrayLiteral':
         for (const item of expr.items) {
-          this._analyzeExpr(item);
+          this._analyzeExpr(item, options);
         }
         return null;
 
       default:
         return null;
+    }
+  }
+
+  _usesGrouping(query) {
+    return (query.groupBy || []).length > 0
+      || this._containsGroupAggregate(query.having)
+      || this._selectItems(query).some(item => this._containsGroupAggregate(item.expr));
+  }
+
+  _selectItems(query) {
+    return Array.isArray(query.select) ? query.select : [];
+  }
+
+  _groupKeySet(query) {
+    return new Set((query.groupBy || []).map(path => path.toString()));
+  }
+
+  _containsGroupAggregate(expr) {
+    if (!expr) return false;
+    switch (expr.type) {
+      case 'Aggregate':
+        return true;
+      case 'BinaryExpr':
+        return this._containsGroupAggregate(expr.left) || this._containsGroupAggregate(expr.right);
+      case 'UnaryExpr':
+        return this._containsGroupAggregate(expr.operand);
+      case 'ObjectLiteral':
+        return Object.values(expr.properties).some(value => this._containsGroupAggregate(value));
+      case 'ArrayLiteral':
+        return expr.items.some(item => this._containsGroupAggregate(item));
+      default:
+        return false;
+    }
+  }
+
+  _validateGroupedExpression(expr, groupKeys, clause) {
+    if (!expr) return true;
+    switch (expr.type) {
+      case 'Aggregate':
+        return true;
+      case 'Path':
+        if (groupKeys.has(expr.toString())) return true;
+        this._error(`${clause} expression '${expr.toString()}' must appear in GROUP BY or be wrapped in an aggregate function`, expr.loc);
+        return false;
+      case 'ArrayAggregate':
+        this._error(`${clause} array aggregate '${expr.func}' must be wrapped in a group aggregate function or moved out of grouped SELECT`, expr.loc);
+        return false;
+      case 'BinaryExpr':
+        return this._validateGroupedExpression(expr.left, groupKeys, clause)
+          && this._validateGroupedExpression(expr.right, groupKeys, clause);
+      case 'UnaryExpr':
+        return this._validateGroupedExpression(expr.operand, groupKeys, clause);
+      case 'Literal':
+        return true;
+      case 'ObjectLiteral':
+        return Object.values(expr.properties)
+          .every(value => this._validateGroupedExpression(value, groupKeys, clause));
+      case 'ArrayLiteral':
+        return expr.items.every(item => this._validateGroupedExpression(item, groupKeys, clause));
+      default:
+        return true;
     }
   }
 
@@ -338,7 +442,7 @@ export default class SemanticAnalyzer {
     return null;
   }
 
-  _analyzeAggregatePath(path, requireKnown = false) {
+  _analyzeArrayAggregatePath(path, requireKnown = false) {
     if (!this.schema) return null;
 
     const [first, second, ...tailAfterAlias] = path.segments;
