@@ -43,6 +43,9 @@ export default class SemanticAnalyzer {
       case 'Query':
         this._analyzeSelectStatement(statement, knownCollections);
         break;
+      case 'SetOperation':
+        this._analyzeSetOperation(statement, knownCollections);
+        break;
       case 'CreateCollection':
         this._analyzeCreate(statement);
         break;
@@ -77,6 +80,20 @@ export default class SemanticAnalyzer {
     this._analyzeWhere(query);
     this._analyzeOrderBy(query);
     this._analyzeLimit(query);
+  }
+
+  _analyzeSetOperation(statement, knownCollections) {
+    this._analyzeIndependentSelect(statement.base, knownCollections);
+    for (const operation of statement.operations) {
+      this._analyzeIndependentSelect(operation.query, knownCollections);
+    }
+    this._analyzeFinalOrderBy(statement.orderBy || []);
+    this._analyzeLimit(statement);
+  }
+
+  _analyzeIndependentSelect(query, knownCollections) {
+    this.aliases = new Map();
+    this._analyzeSelectStatement(query, knownCollections);
   }
 
   _analyzeCreate(statement) {
@@ -127,6 +144,21 @@ export default class SemanticAnalyzer {
       this._error(`Duplicate alias '${key}'`, j.loc);
     }
     this.aliases.set(key, { kind: 'join', name: j.source });
+
+    if (j.natural) {
+      if (j.condition) {
+        this._error('NATURAL JOIN cannot use an ON condition', j.loc);
+      }
+      const commonFields = this._getCommonTopLevelFields(query.from.name, j.source);
+      if (commonFields) {
+        if (commonFields.length === 0) {
+          this._error(`NATURAL JOIN between '${query.from.name}' and '${j.source}' has no common top-level fields`, j.loc);
+        } else {
+          j.commonFields = commonFields;
+        }
+      }
+      return;
+    }
 
     if (!j.condition) {
       this._error('JOIN requires ON condition', j.loc);
@@ -183,6 +215,18 @@ export default class SemanticAnalyzer {
         this._error('ORDER BY item has no path', item.loc);
       } else {
         this._analyzePath(item.path, { requireKnown: Boolean(this.schema) });
+      }
+      const dir = item.direction?.toUpperCase();
+      if (dir && dir !== 'ASC' && dir !== 'DESC') {
+        this._error(`Invalid order direction '${item.direction}'`, item.loc);
+      }
+    }
+  }
+
+  _analyzeFinalOrderBy(orderBy) {
+    for (const item of orderBy) {
+      if (!item.path || !item.path.segments || item.path.segments.length === 0) {
+        this._error('ORDER BY item has no path', item.loc);
       }
       const dir = item.direction?.toUpperCase();
       if (dir && dir !== 'ASC' && dir !== 'DESC') {
@@ -326,6 +370,14 @@ export default class SemanticAnalyzer {
     if (!knownCollections.has(name)) {
       this._error(`${operation} references unknown collection '${name}'`, loc);
     }
+  }
+
+  _getCommonTopLevelFields(leftCollection, rightCollection) {
+    if (!this.schema) return null;
+    const leftFields = this.schema.collections?.[leftCollection]?.fields;
+    const rightFields = this.schema.collections?.[rightCollection]?.fields;
+    if (!leftFields || !rightFields) return null;
+    return Object.keys(leftFields).filter(field => Object.hasOwn(rightFields, field));
   }
 
   // ── Error helper ───────────────────────────

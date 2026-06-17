@@ -25,6 +25,17 @@ export class QueryNode {
   }
 }
 
+export class SetOperationNode {
+  constructor({ base, operations, orderBy, limit, loc }) {
+    this.type = 'SetOperation';
+    this.base = base;
+    this.operations = operations || []; // [{ op: 'UNION'|'INTERSECT'|'EXCEPT', query: QueryNode }]
+    this.orderBy = orderBy || [];
+    this.limit = limit;
+    this.loc = loc;
+  }
+}
+
 export class CreateCollectionNode {
   constructor(name, records, loc) {
     this.type = 'CreateCollection';
@@ -97,11 +108,14 @@ export class SourceNode {
 }
 
 export class JoinNode {
-  constructor(source, alias, condition, loc) {
+  constructor(source, alias, condition, loc, kind = 'inner', natural = false) {
     this.type = 'Join';
     this.source = source;
     this.alias = alias || null;
     this.condition = condition;
+    this.kind = kind;
+    this.natural = natural;
+    this.commonFields = null;
     this.loc = loc;
   }
 }

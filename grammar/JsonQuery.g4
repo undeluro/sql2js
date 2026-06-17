@@ -9,21 +9,33 @@ program
     ;
 
 statement
-    : selectStmt SEMICOLON         # SelectStatement
+    : queryExpr SEMICOLON          # SelectStatement
     | createStmt SEMICOLON         # CreateStatement
     | insertStmt SEMICOLON         # InsertStatement
     | updateStmt SEMICOLON         # UpdateStatement
     | deleteStmt SEMICOLON         # DeleteStatement
     ;
 
-selectStmt
+queryExpr
+    : selectCore setTail* orderByClause? limitClause?
+    ;
+
+setTail
+    : setOp selectCore
+    ;
+
+setOp
+    : UNION
+    | INTERSECT
+    | EXCEPT
+    ;
+
+selectCore
     : SELECT selectList
       FROM source
       joinClause?
       unnestClause*
       whereClause?
-      orderByClause?
-      limitClause?
     ;
 
 selectList
@@ -40,7 +52,14 @@ source
     ;
 
 joinClause
-    : JOIN IDENTIFIER (AS IDENTIFIER)? ON expr
+    : NATURAL? joinType? JOIN IDENTIFIER (AS IDENTIFIER)? (ON expr)?
+    ;
+
+joinType
+    : INNER
+    | LEFT OUTER?
+    | RIGHT OUTER?
+    | FULL OUTER?
     ;
 
 unnestClause
@@ -140,6 +159,10 @@ arrayLiteral
 
 compOp
     : EQ | NEQ | LT | GT | LEQ | GEQ
+    | LIKE
+    | ILIKE
+    | NOT LIKE
+    | NOT ILIKE
     ;
 
 // ========================
@@ -168,6 +191,17 @@ MAX_F   : [Mm][Aa][Xx] ;
 NULL    : [Nn][Uu][Ll][Ll] ;
 JOIN    : [Jj][Oo][Ii][Nn] ;
 ON      : [Oo][Nn] ;
+INNER   : [Ii][Nn][Nn][Ee][Rr] ;
+LEFT    : [Ll][Ee][Ff][Tt] ;
+RIGHT   : [Rr][Ii][Gg][Hh][Tt] ;
+FULL    : [Ff][Uu][Ll][Ll] ;
+OUTER   : [Oo][Uu][Tt][Ee][Rr] ;
+NATURAL : [Nn][Aa][Tt][Uu][Rr][Aa][Ll] ;
+UNION   : [Uu][Nn][Ii][Oo][Nn] ;
+INTERSECT : [Ii][Nn][Tt][Ee][Rr][Ss][Ee][Cc][Tt] ;
+EXCEPT  : [Ee][Xx][Cc][Ee][Pp][Tt] ;
+LIKE    : [Ll][Ii][Kk][Ee] ;
+ILIKE   : [Ii][Ll][Ii][Kk][Ee] ;
 CREATE  : [Cc][Rr][Ee][Aa][Tt][Ee] ;
 COLLECTION : [Cc][Oo][Ll][Ll][Ee][Cc][Tt][Ii][Oo][Nn] ;
 INSERT  : [Ii][Nn][Ss][Ee][Rr][Tt] ;

@@ -111,7 +111,10 @@ Dla wygody nadal akceptowany jest plik, którego korzeniem jest tablica obiektó
 | Nawigacja przez zagnieżdżone obiekty | Dozwolona bezpośrednio: `address.city`. |
 | Nawigacja przez tablice | Wymaga jawnego `UNNEST(pole) AS alias`. |
 | Agregaty | `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` operują na tablicach wewnątrz rekordu. |
-| JOIN | Prosty `JOIN ... ON` między dwiema kolekcjami. |
+| JOIN | `INNER`, `LEFT`, `RIGHT`, `FULL` oraz `NATURAL JOIN` między kolekcjami. |
+| Wynik `SELECT *` po JOIN | Pola techniczne aliasów są ukryte; konflikty z prawej strony dostają prefiks aliasu, np. `p.id`. |
+| Operacje zbiorowe | `UNION`, `INTERSECT`, `EXCEPT` działają bez duplikatów; końcowe `ORDER BY` i `LIMIT` dotyczą całego wyniku. |
+| Dopasowanie tekstu | `LIKE` jest czuły na wielkość liter, `ILIKE` ignoruje wielkość liter; `%` i `_` są wildcardami. |
 | Mutacje w TUI | Po poprawnym `CREATE`, `INSERT`, `UPDATE`, `DELETE` zmiany są automatycznie zapisywane do aktywnej bazy. |
 | Mutacje w CLI | Domyślnie nie nadpisują pliku wejściowego; zapis do `-d` wymaga `--save`. |
 | Skrypty | Pliki `.s2j` zawierają instrukcje zakończone średnikami. |
@@ -154,6 +157,26 @@ FROM users AS u
 JOIN orders AS o ON u.id = o.userId
 WHERE o.total > 100
 ORDER BY o.total DESC;
+
+-- LEFT JOIN zachowuje rekordy z lewej kolekcji bez dopasowania
+SELECT *
+FROM users AS u
+LEFT JOIN orders AS o ON u.id = o.userId;
+
+-- NATURAL JOIN dopasowuje po wspólnych polach najwyższego poziomu
+SELECT *
+FROM lefts NATURAL JOIN rights;
+
+-- Operacje zbiorowe są domyślnie bez duplikatów
+SELECT name FROM users
+UNION
+SELECT name FROM customers
+ORDER BY name
+LIMIT 10;
+
+-- LIKE / ILIKE
+SELECT name FROM users WHERE name LIKE 'Ali%';
+SELECT name FROM users WHERE email ILIKE '%@EXAMPLE.COM';
 ```
 
 ---
@@ -187,6 +210,15 @@ Tokeny są podzielone na słowa kluczowe, literały, identyfikatory oraz operato
 | `NULL` | `[Nn][Uu][Ll][Ll]` | Literał null. |
 | `JOIN` | `[Jj][Oo][Ii][Nn]` | Łączenie kolekcji. |
 | `ON` | `[Oo][Nn]` | Warunek JOIN. |
+| `INNER` | `[Ii][Nn][Nn][Ee][Rr]` | Jawny inner join. |
+| `LEFT`, `RIGHT`, `FULL` | case-insensitive | Zewnętrzne warianty JOIN. |
+| `OUTER` | `[Oo][Uu][Tt][Ee][Rr]` | Opcjonalne słowo w `LEFT/RIGHT/FULL OUTER JOIN`. |
+| `NATURAL` | `[Nn][Aa][Tt][Uu][Rr][Aa][Ll]` | JOIN po wspólnych polach. |
+| `UNION` | `[Uu][Nn][Ii][Oo][Nn]` | Suma zbiorów wyników. |
+| `INTERSECT` | `[Ii][Nn][Tt][Ee][Rr][Ss][Ee][Cc][Tt]` | Część wspólna wyników. |
+| `EXCEPT` | `[Ee][Xx][Cc][Ee][Pp][Tt]` | Różnica wyników. |
+| `LIKE` | `[Ll][Ii][Kk][Ee]` | Dopasowanie wzorca czułe na wielkość liter. |
+| `ILIKE` | `[Ii][Ll][Ii][Kk][Ee]` | Dopasowanie wzorca ignorujące wielkość liter. |
 | `CREATE` | `[Cc][Rr][Ee][Aa][Tt][Ee]` | Tworzenie kolekcji. |
 | `COLLECTION` | `[Cc][Oo][Ll][Ll][Ee][Cc][Tt][Ii][Oo][Nn]` | Słowo kluczowe kolekcji. |
 | `INSERT` | `[Ii][Nn][Ss][Ee][Rr][Tt]` | Dodanie rekordu. |
@@ -239,21 +271,33 @@ program
     ;
 
 statement
-    : selectStmt SEMICOLON
+    : queryExpr SEMICOLON
     | createStmt SEMICOLON
     | insertStmt SEMICOLON
     | updateStmt SEMICOLON
     | deleteStmt SEMICOLON
     ;
 
-selectStmt
+queryExpr
+    : selectCore setTail* orderByClause? limitClause?
+    ;
+
+setTail
+    : setOp selectCore
+    ;
+
+setOp
+    : UNION
+    | INTERSECT
+    | EXCEPT
+    ;
+
+selectCore
     : SELECT selectList
       FROM source
       joinClause?
       unnestClause*
       whereClause?
-      orderByClause?
-      limitClause?
     ;
 
 createStmt
@@ -290,7 +334,14 @@ source
     ;
 
 joinClause
-    : JOIN IDENTIFIER (AS IDENTIFIER)? ON expr
+    : NATURAL? joinType? JOIN IDENTIFIER (AS IDENTIFIER)? (ON expr)?
+    ;
+
+joinType
+    : INNER
+    | LEFT OUTER?
+    | RIGHT OUTER?
+    | FULL OUTER?
     ;
 
 unnestClause
@@ -322,6 +373,14 @@ expr
     | NOT expr
     | expr AND expr
     | expr OR expr
+    ;
+
+compOp
+    : EQ | NEQ | LT | GT | LEQ | GEQ
+    | LIKE
+    | ILIKE
+    | NOT LIKE
+    | NOT ILIKE
     ;
 
 primary
@@ -513,7 +572,7 @@ Testy obejmują między innymi:
 - wykonanie mutacji i zapytań,
 - uruchamianie skryptów `.s2j`,
 - zapis przez `--save`, `--output`, `--write-dataset`,
-- regresję dla `JOIN`, `UNNEST`, agregatów, `ORDER BY`, `LIMIT`.
+- regresję dla wariantów `JOIN`, `NATURAL JOIN`, operacji zbiorowych, `LIKE`/`ILIKE`, `UNNEST`, agregatów, `ORDER BY`, `LIMIT`.
 
 ---
 

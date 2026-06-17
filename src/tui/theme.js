@@ -80,6 +80,8 @@ const SQL_KEYWORDS = new Set([
   'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'NULL',
   'JOIN', 'ON', 'TRUE', 'FALSE', 'CREATE', 'COLLECTION',
   'INSERT', 'INTO', 'VALUE', 'UPDATE', 'SET', 'DELETE',
+  'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER', 'NATURAL',
+  'UNION', 'INTERSECT', 'EXCEPT', 'LIKE', 'ILIKE',
 ]);
 
 export function highlightSQL(sql) {
@@ -136,12 +138,19 @@ export function pipelineBar(stages) {
 
 export function formatTable(rows, columns, maxWidth = Math.max(20, (process.stdout.columns || 100) - 4)) {
   if (!rows || rows.length === 0) return colors.dimText('  (no results)');
+  const displayColumns = [...(columns || [])];
+  for (const row of rows) {
+    for (const col of Object.keys(row || {})) {
+      if (!displayColumns.includes(col)) displayColumns.push(col);
+    }
+  }
+  columns = displayColumns;
 
   // Calculate column widths
   const widths = columns.map(col => {
     const headerLen = col.length;
     const maxDataLen = rows.reduce((max, row) => {
-      const val = String(row[col] ?? 'null');
+      const val = formatCell(row[col]);
       return Math.max(max, val.length);
     }, 0);
     return Math.min(Math.max(headerLen, maxDataLen), 30);
@@ -161,7 +170,7 @@ export function formatTable(rows, columns, maxWidth = Math.max(20, (process.stdo
 
   const dataRows = rows.map((row, rowIdx) => {
     const line = columns.map((col, i) => {
-      const val = truncate(String(row[col] ?? 'null'), widths[i]);
+      const val = truncate(formatCell(row[col]), widths[i]);
       return val.padEnd(widths[i]);
     }).join(colors.muted(' │ '));
     return rowIdx % 2 === 0 ? colors.text(line) : colors.dimText(line);
@@ -172,6 +181,18 @@ export function formatTable(rows, columns, maxWidth = Math.max(20, (process.stdo
     `  ${sep}`,
     ...dataRows.map(r => `  ${r}`),
   ].join('\n');
+}
+
+function formatCell(value) {
+  if (value === null || value === undefined) return 'null';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
 }
 
 function truncate(value, width) {

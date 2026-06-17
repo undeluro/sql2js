@@ -1,6 +1,7 @@
 // Quick test script — verify the compiler pipeline and runtime behavior
 
 import { compile, compileAndExecute, createDatabaseSession, executeProgram } from './pipeline.js';
+import { formatTable } from './tui/theme.js';
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,6 +91,122 @@ runTest('JOIN still works with a second JSON file', () => {
   assertNoErrors(result);
   assert(result.result.length === 2, `Expected 2 joined rows, got ${result.result.length}`);
   assert(result.result[0]['u.name'], 'Expected aliased select output');
+});
+
+runTest('JOIN variants produce clean SELECT * output', () => {
+  const file = writeJson('join-variants.json', {
+    users: [
+      { id: 1, name: 'Ala' },
+      { id: 2, name: 'Ola' },
+    ],
+    people: [
+      { id: 1, name: 'Jan' },
+      { id: 3, name: 'Ewa' },
+    ],
+  });
+
+  const inner = compileAndExecute('SELECT * FROM users AS u INNER JOIN people AS p ON u.id = p.id;', file);
+  assertNoErrors(inner);
+  assert(inner.result.length === 1, `Expected 1 inner row, got ${inner.result.length}`);
+  assert(!Object.keys(inner.result[0]).some(key => key.startsWith('__')), 'Expected internal alias fields to be hidden');
+  assert(inner.result[0].name === 'Ala', 'Expected left field to keep original name');
+  assert(inner.result[0]['p.name'] === 'Jan', 'Expected conflicting right field to be prefixed');
+
+  const left = compileAndExecute('SELECT * FROM users AS u LEFT JOIN people AS p ON u.id = p.id;', file);
+  assertNoErrors(left);
+  assert(left.result.length === 2, `Expected 2 left rows, got ${left.result.length}`);
+  assert(left.result.some(row => row.id === 2 && row.name === 'Ola'), 'Expected unmatched left row');
+
+  const right = compileAndExecute('SELECT * FROM users AS u RIGHT JOIN people AS p ON u.id = p.id;', file);
+  assertNoErrors(right);
+  assert(right.result.length === 2, `Expected 2 right rows, got ${right.result.length}`);
+  assert(right.result.some(row => row.id === 3 && row.name === 'Ewa'), 'Expected unmatched right row');
+
+  const full = compileAndExecute('SELECT * FROM users AS u FULL JOIN people AS p ON u.id = p.id;', file);
+  assertNoErrors(full);
+  assert(full.result.length === 3, `Expected 3 full rows, got ${full.result.length}`);
+});
+
+runTest('NATURAL JOIN uses common top-level fields', () => {
+  const file = writeJson('natural-join.json', {
+    lefts: [
+      { id: 1, code: 'x', leftValue: 'L1' },
+      { id: 2, code: 'y', leftValue: 'L2' },
+    ],
+    rights: [
+      { id: 1, code: 'x', rightValue: 'R1' },
+      { id: 2, code: 'z', rightValue: 'R2' },
+    ],
+    unrelated: [
+      { other: 1 },
+    ],
+  });
+
+  const natural = compileAndExecute('SELECT * FROM lefts NATURAL JOIN rights;', file);
+  assertNoErrors(natural);
+  assert(natural.result.length === 1, `Expected 1 natural row, got ${natural.result.length}`);
+  assert(natural.result[0].leftValue === 'L1' && natural.result[0].rightValue === 'R1', 'Expected matching natural row');
+
+  const invalid = compileAndExecute('SELECT * FROM lefts NATURAL JOIN unrelated;', file);
+  assertHasError(invalid, 'has no common top-level fields');
+});
+
+runTest('Set operations are distinct and support final ORDER BY and LIMIT', () => {
+  const file = writeJson('set-ops.json', {
+    a: [{ name: 'A' }, { name: 'B' }, { name: 'B' }],
+    b: [{ name: 'B' }, { name: 'C' }],
+  });
+
+  const union = compileAndExecute('SELECT name FROM a UNION SELECT name FROM b ORDER BY name LIMIT 2;', file);
+  assertNoErrors(union);
+  assert(union.result.map(row => row.name).join(',') === 'A,B', 'Expected distinct UNION with final ORDER BY/LIMIT');
+
+  const intersect = compileAndExecute('SELECT name FROM a INTERSECT SELECT name FROM b;', file);
+  assertNoErrors(intersect);
+  assert(intersect.result.length === 1 && intersect.result[0].name === 'B', 'Expected INTERSECT to keep common row');
+
+  const except = compileAndExecute('SELECT name FROM a EXCEPT SELECT name FROM b;', file);
+  assertNoErrors(except);
+  assert(except.result.length === 1 && except.result[0].name === 'A', 'Expected EXCEPT to remove right rows');
+});
+
+runTest('LIKE and ILIKE support wildcards, negation, and escaping', () => {
+  const file = writeJson('like.json', {
+    items: [
+      { name: 'Alicja' },
+      { name: 'alicja' },
+      { name: 'A_1' },
+      { name: 'Ab1' },
+    ],
+  });
+
+  const like = compileAndExecute("SELECT name FROM items WHERE name LIKE 'Ali%';", file);
+  assertNoErrors(like);
+  assert(like.result.length === 1 && like.result[0].name === 'Alicja', 'Expected case-sensitive LIKE');
+
+  const ilike = compileAndExecute("SELECT name FROM items WHERE name ILIKE 'ali%';", file);
+  assertNoErrors(ilike);
+  assert(ilike.result.length === 2, 'Expected case-insensitive ILIKE');
+
+  const escaped = compileAndExecute("SELECT name FROM items WHERE name LIKE 'A\\_%';", file);
+  assertNoErrors(escaped);
+  assert(escaped.result.length === 1 && escaped.result[0].name === 'A_1', 'Expected escaped underscore to be literal');
+
+  const negated = compileAndExecute("SELECT name FROM items WHERE name NOT ILIKE 'ali%';", file);
+  assertNoErrors(negated);
+  assert(negated.result.length === 2, 'Expected NOT ILIKE to negate the match');
+});
+
+runTest('Table formatting includes later columns and compact JSON cells', () => {
+  const table = formatTable([
+    { id: 1, address: { city: 'Warszawa' } },
+    { id: 2, extra: ['x'] },
+  ], ['id']);
+
+  assert(table.includes('address'), 'Expected table to include columns from later object keys');
+  assert(table.includes('extra'), 'Expected table to include later-row columns');
+  assert(table.includes('{"city":"Warszawa"}'), 'Expected object cell to be JSON');
+  assert(table.includes('["x"]'), 'Expected array cell to be JSON');
 });
 
 // JSON validation

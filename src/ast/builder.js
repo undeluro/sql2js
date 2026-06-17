@@ -7,6 +7,7 @@ import JsonQueryVisitor from '../generated/JsonQueryVisitor.js';
 import JsonQueryParser from '../generated/JsonQueryParser.js';
 import {
   ProgramNode, QueryNode, SelectAllNode, SelectItemNode,
+  SetOperationNode,
   CreateCollectionNode, InsertNode, UpdateNode, DeleteNode, AssignmentNode,
   SourceNode, JoinNode, UnnestNode,
   BinaryExprNode, UnaryExprNode, AggregateNode,
@@ -23,7 +24,7 @@ export default class ASTBuilder extends JsonQueryVisitor {
   }
 
   visitSelectStatement(ctx) {
-    return this.visit(ctx.selectStmt());
+    return this.visit(ctx.queryExpr());
   }
 
   visitCreateStatement(ctx) {
@@ -42,17 +43,9 @@ export default class ASTBuilder extends JsonQueryVisitor {
     return this.visit(ctx.deleteStmt());
   }
 
-  visitSelectStmt(ctx) {
-    const select = this.visit(ctx.selectList());
-    const from = this.visit(ctx.source());
-
-    const joinCtx = ctx.joinClause();
-    const join = joinCtx ? this.visit(joinCtx) : null;
-
-    const unnest = (ctx.unnestClause() || []).map(u => this.visit(u));
-
-    const whereCtx = ctx.whereClause();
-    const where = whereCtx ? this.visit(whereCtx) : null;
+  visitQueryExpr(ctx) {
+    const base = this.visit(ctx.selectCore());
+    const tails = ctx.setTail() || [];
 
     const orderByCtx = ctx.orderByClause();
     let orderBy = [];
@@ -65,6 +58,38 @@ export default class ASTBuilder extends JsonQueryVisitor {
     if (limitCtx) {
       limit = parseInt(limitCtx.INTEGER_LIT().getText(), 10);
     }
+
+    if (tails.length === 0) {
+      base.orderBy = orderBy;
+      base.limit = limit;
+      return base;
+    }
+
+    return new SetOperationNode({
+      base,
+      operations: tails.map((tail, index) => ({
+        op: tail.setOp().getText().toUpperCase(),
+        query: this.visit(tail.selectCore()),
+      })),
+      orderBy,
+      limit,
+      loc: locFrom(ctx),
+    });
+  }
+
+  visitSelectCore(ctx) {
+    const select = this.visit(ctx.selectList());
+    const from = this.visit(ctx.source());
+
+    const joinCtx = ctx.joinClause();
+    const join = joinCtx ? this.visit(joinCtx) : null;
+
+    const unnest = (ctx.unnestClause() || []).map(u => this.visit(u));
+
+    const whereCtx = ctx.whereClause();
+    const where = whereCtx ? this.visit(whereCtx) : null;
+    const orderBy = [];
+    const limit = null;
 
     return new QueryNode({
       select, from, join, unnest, where, orderBy, limit,
@@ -147,8 +172,11 @@ export default class ASTBuilder extends JsonQueryVisitor {
     const identifiers = ctx.IDENTIFIER();
     const source = identifiers[0].getText();
     const alias = identifiers.length > 1 ? identifiers[1].getText() : null;
-    const condition = this.visit(ctx.expr());
-    return new JoinNode(source, alias, condition, locFrom(ctx));
+    const condition = ctx.expr() ? this.visit(ctx.expr()) : null;
+    const natural = Boolean(ctx.NATURAL());
+    const joinTypeCtx = ctx.joinType();
+    const kind = joinTypeCtx ? normalizeJoinKind(joinTypeCtx.getText()) : 'inner';
+    return new JoinNode(source, alias, condition, locFrom(ctx), kind, natural);
   }
 
   visitUnnestClause(ctx) {
@@ -194,7 +222,7 @@ export default class ASTBuilder extends JsonQueryVisitor {
   visitCompareExpr(ctx) {
     const left = this.visit(ctx.expr(0));
     const right = this.visit(ctx.expr(1));
-    const op = ctx.compOp().getText();
+    const op = normalizeComparisonOperator(ctx.compOp().getText());
     return new BinaryExprNode(op, left, right, locFrom(ctx));
   }
 
@@ -270,7 +298,7 @@ export default class ASTBuilder extends JsonQueryVisitor {
     if (ctx.STRING_LIT()) {
       // Strip surrounding quotes and unescape
       const raw = ctx.getText();
-      const inner = raw.slice(1, -1).replace(/\\(.)/g, '$1');
+      const inner = unescapeStringLiteral(raw);
       return new LiteralNode(inner, 'string', loc);
     }
     if (ctx.BOOLEAN_LIT()) {
@@ -301,10 +329,35 @@ export default class ASTBuilder extends JsonQueryVisitor {
   visitObjectKey(ctx) {
     if (ctx.IDENTIFIER()) return ctx.IDENTIFIER().getText();
     const raw = ctx.STRING_LIT().getText();
-    return raw.slice(1, -1).replace(/\\(.)/g, '$1');
+    return unescapeStringLiteral(raw);
   }
 
   visitArrayLiteral(ctx) {
     return new ArrayLiteralNode((ctx.expr() || []).map(e => this.visit(e)), locFrom(ctx));
   }
+}
+
+function normalizeJoinKind(text) {
+  const upper = text.toUpperCase();
+  if (upper.startsWith('LEFT')) return 'left';
+  if (upper.startsWith('RIGHT')) return 'right';
+  if (upper.startsWith('FULL')) return 'full';
+  return 'inner';
+}
+
+function normalizeComparisonOperator(text) {
+  const upper = text.toUpperCase();
+  if (upper === 'NOTLIKE') return 'NOT LIKE';
+  if (upper === 'NOTILIKE') return 'NOT ILIKE';
+  if (upper === 'LIKE' || upper === 'ILIKE') return upper;
+  return text;
+}
+
+function unescapeStringLiteral(raw) {
+  const quote = raw[0];
+  const inner = raw.slice(1, -1);
+  return inner.replace(/\\(.)/g, (match, char) => {
+    if (char === quote || char === '\\') return char;
+    return match;
+  });
 }
