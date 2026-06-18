@@ -1,0 +1,13 @@
+{
+  "test_create": [
+    {
+      "dummy": 1
+    }
+  ],
+  "new_coll": [
+    {
+      "id": 1,
+      "name": "Test"
+    }
+  ]
+}

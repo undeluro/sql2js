@@ -1,50 +1,104 @@
 # json-query-2-javascript
 
+## Temat projektu
+
+`sql2js` — kompilator języka zapytań SQL-like dla danych JSON, z interaktywnym TUI oraz obsługą prostego modelu relacyjnej bazy danych zapisanej w pliku `.json`.
+
 ## Zespół
+
 - Dzmitry Nikitsin — dnikitin@student.agh.edu.pl
-- Niyaz Lapkouski - nlapkowski@student.agh.edu.pl
+- Niyaz Lapkouski — nlapkowski@student.agh.edu.pl
 
 ## Założenia programu
-Translator zapytań SQL-like dla danych zapisanych w formacie JSON.  
-Użytkownik podaje zapytanie w uproszczonym DSL inspirowanym SQL oraz plik/zmienną JSON, a program wykonuje pełny pipeline kompilatorski: lekser → parser → AST → analiza semantyczna → generacja kodu JavaScript.
+
+Program jest kompilatorem uproszczonego języka SQL-like dla danych zapisanych w formacie JSON. Użytkownik może wykonywać zapytania oraz modyfikacje danych przez interfejs terminalowy, jednorazowe polecenia CLI albo pliki skryptów `.s2j`.
+
+Pipeline kompilacji:
+
+```text
+SQL-like DSL
+  -> Lexer ANTLR4
+  -> Parser ANTLR4
+  -> AST Builder
+  -> Semantic Analyzer
+  -> Code Generator JavaScript
+  -> Runtime Executor
+  -> wynik JSON albo zmodyfikowana baza danych
+```
 
 ## Ogólne cele programu
-Program umożliwia wykonywanie zapytań na danych JSON poprzez tłumaczenie ich do kodu JavaScript.
+
+Program umożliwia:
+
+- wykonywanie zapytań `SELECT` na kolekcjach JSON,
+- tworzenie kolekcji poleceniem `CREATE COLLECTION`,
+- dodawanie rekordów poleceniem `INSERT`,
+- modyfikowanie rekordów poleceniem `UPDATE`,
+- usuwanie rekordów poleceniem `DELETE`,
+- pracę interaktywną w TUI z automatycznym zapisem zmian,
+- uruchamianie poleceń z CLI przez `-e`,
+- uruchamianie skryptów z plików `.s2j` przez `-f`.
 
 ## Rodzaj translatora
-Kompilator (translator do kodu docelowego JS).
 
-## Pipeline
-```
-zapytanie DSL
-    │
-    ▼
- Lexer (ANTLR4)          ← tokeny
-    │
-    ▼
- Parser (ANTLR4)         ← drzewo rozbioru (Parse Tree)
-    │
-    ▼
- AST Visitor             ← własne węzły AST
-    │
-    ▼
- Semantic Analyzer       ← sprawdzanie ścieżek, typów, UNNEST
-    │
-    ▼
- Code Generator          ← kod JavaScript
-    │
-    ▼
- Wykonanie JS na danych JSON → wynik (JSON / terminal)
-```
+Kompilator. Program tłumaczy wejściowy język DSL do kodu JavaScript, a następnie wykonuje wygenerowaną funkcję na danych JSON.
 
 ## Planowany wynik działania programu
-Generator kodu JavaScript realizującego zapytanie na pliku JSON.
+
+Wynikiem działania jest:
+
+- tablica obiektów JSON dla zapytań `SELECT`,
+- zmodyfikowana baza danych JSON dla poleceń `CREATE`, `INSERT`, `UPDATE`, `DELETE`,
+- diagnostyka błędów z rozróżnieniem faz: `lexical`, `syntax`, `semantic`, `compiletime`, `runtime`.
 
 ## Planowany język implementacji
-JavaScript.
+
+JavaScript ESM uruchamiany w Node.js.
 
 ## Generator parsera
-ANTLR4.
+
+Do realizacji skanera i parsera używany jest ANTLR4:
+
+- gramatyka: `grammar/JsonQuery.g4`,
+- runtime: pakiet npm `antlr4`,
+- wygenerowane pliki: `src/generated/`.
+
+Po zmianie gramatyki należy uruchomić:
+
+```bash
+npm run generate
+```
+
+---
+
+## Terminologia projektu
+
+| Termin | Znaczenie w projekcie |
+|---|---|
+| Baza danych | Jeden plik `.json`, którego korzeniem jest obiekt. |
+| Kolekcja / tabela | Nazwana tablica obiektów w bazie danych, np. `"users": [...]`. |
+| Rekord / wiersz | Pojedynczy obiekt JSON w kolekcji. |
+| Pole / kolumna | Właściwość rekordu. Pola zagnieżdżone zapisuje się ścieżką, np. `profile.score`. |
+| Ścieżka | Notacja kropkowa do pól obiektu, np. `address.city`. |
+| Instrukcja | Pojedyncze polecenie DSL zakończone średnikiem. |
+| Skrypt | Plik `.s2j` zawierający jedną lub wiele instrukcji. |
+| JOIN | Łączenie rekordów dwóch kolekcji na podstawie warunku `ON`. |
+| UNNEST | Jawne rozwinięcie tablicy zagnieżdżonej w rekordzie do wielu wierszy. |
+
+Preferowany format bazy danych:
+
+```json
+{
+  "users": [
+    { "id": 1, "name": "Ala", "age": 20 }
+  ],
+  "orders": [
+    { "id": 10, "userId": 1, "total": 100 }
+  ]
+}
+```
+
+Dla wygody nadal akceptowany jest plik, którego korzeniem jest tablica obiektów. Wtedy nazwa kolekcji jest brana z nazwy pliku, np. `users.json` jest traktowany jak baza `{ "users": [...] }`.
 
 ---
 
@@ -52,158 +106,180 @@ ANTLR4.
 
 | Kwestia | Decyzja |
 |---|---|
-| Nawigacja przez zagnieżdżone **obiekty** | Dozwolona bezpośrednio: `address.city` |
-| Nawigacja przez **tablice** | Wymaga jawnego `UNNEST(pole) AS alias` |
-| Agregatów | `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` — operują na tablicy wewnątrz rekordu |
-| Joinów | Prosty `JOIN ... ON` — łączenie dwóch źródeł JSON po warunku |
-| Wynik | Wewnętrznie lista obiektów JS; eksport jako JSON lub wydruk do terminala |
-
----
-
-## Wspierane zapytania — przykłady
-
-```sql
--- Prosty filtr z zagnieżdżoną ścieżką
-SELECT name, address.city FROM users WHERE age > 18 ORDER BY name ASC LIMIT 10
-
--- Rozwinięcie tablicy przez UNNEST
-SELECT name, tag FROM users UNNEST(tags) AS tag WHERE tag = 'admin'
-
--- Zliczanie elementów tablicy (agregat na poziomie rekordu)
-SELECT name, COUNT(orders) FROM customers WHERE COUNT(orders) > 3
-
--- Inne funkcje agregujące na tablicach
-SELECT name, SUM(orders.total), AVG(orders.total) FROM customers
-WHERE MAX(orders.total) > 100
-
--- Złożone warunki i sortowanie po głębokiej ścieżce
-SELECT id, profile.bio FROM users
-WHERE age >= 21 AND profile.active = true
-ORDER BY profile.score DESC
-LIMIT 5
-
--- Prosty JOIN dwóch źródeł JSON
-SELECT u.name, o.product, o.total
-FROM users AS u
-JOIN orders AS o ON u.id = o.userId
-WHERE o.total > 100
-ORDER BY o.total DESC
-```
+| Korzeń bazy danych | Obiekt JSON, którego pola są kolekcjami. |
+| Kolekcja | Tablica obiektów JSON. |
+| Nawigacja przez zagnieżdżone obiekty | Dozwolona bezpośrednio: `address.city`. |
+| Rozwijanie obiektu w `SELECT` | `address.*` oraz `u.address.*` rozwijają bezpośrednie pola obiektu do kolumn z prefiksem, np. `address.city`. |
+| Nawigacja przez tablice | Wymaga jawnego `UNNEST(pole) AS alias`. |
+| Agregaty grupowe | `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` operują na wierszach wyniku, z obsługą `GROUP BY`, `HAVING` i `COUNT(*)`. |
+| Funkcje tablicowe | `ARRAY_COUNT`, `ARRAY_SUM`, `ARRAY_AVG`, `ARRAY_MIN`, `ARRAY_MAX` operują na tablicach wewnątrz pojedynczego rekordu. |
+| JOIN | `INNER`, `LEFT`, `RIGHT`, `FULL` oraz `NATURAL JOIN` między kolekcjami. |
+| Wynik `SELECT *` po JOIN | Pola techniczne aliasów są ukryte; konflikty z prawej strony dostają prefiks aliasu, np. `p.id`. |
+| Operacje zbiorowe | `UNION`, `INTERSECT`, `EXCEPT` działają bez duplikatów; końcowe `ORDER BY` i `LIMIT` dotyczą całego wyniku. |
+| Dopasowanie tekstu | `LIKE` jest czuły na wielkość liter, `ILIKE` ignoruje wielkość liter; `%` i `_` są wildcardami. |
+| Wyświetlanie tabel w TUI | Zagnieżdżone obiekty i tablice są pokazywane jako pełny, zwijany tekst JSON bez skracania wielokropkiem. |
+| Mutacje w TUI | Po poprawnym `CREATE`, `INSERT`, `UPDATE`, `DELETE` zmiany są automatycznie zapisywane do aktywnej bazy. |
+| Mutacje w CLI | Domyślnie nie nadpisują pliku wejściowego; zapis do `-d` wymaga `--save`. |
+| Skrypty | Pliki `.s2j` zawierają instrukcje zakończone średnikami. |
 
 ---
 
 ## Opis tokenów
 
-Tokeny są podzielone na cztery kategorie: **słowa kluczowe**, **literały**, **identyfikatory** i **operatory/znaki przestankowe**.  
-Wszystkie słowa kluczowe są **case-insensitive** (obsługa na poziomie leksera przez klasy znaków ANTLR4).  
-Białe znaki i komentarze liniowe (`--`) są pomijane (nie trafiają do strumienia tokenów).
+Tokeny są podzielone na słowa kluczowe, literały, identyfikatory oraz operatory/znaki przestankowe. Słowa kluczowe są case-insensitive. Białe znaki i komentarze liniowe `--` są pomijane.
 
 ### Słowa kluczowe
 
-| Token | Wzorzec (regex) | Opis |
+| Token | Wzorzec | Opis |
 |---|---|---|
-| `SELECT` | `[Ss][Ee][Ll][Ee][Cc][Tt]` | Rozpoczyna listę projekcji |
-| `FROM` | `[Ff][Rr][Oo][Mm]` | Określa źródło danych |
-| `WHERE` | `[Ww][Hh][Ee][Rr][Ee]` | Filtrowanie wierszy |
-| `ORDER` | `[Oo][Rr][Dd][Ee][Rr]` | Sortowanie (razem z `BY`) |
-| `BY` | `[Bb][Yy]` | Część `ORDER BY` |
-| `LIMIT` | `[Ll][Ii][Mm][Ii][Tt]` | Ograniczenie liczby wyników |
-| `UNNEST` | `[Uu][Nn][Nn][Ee][Ss][Tt]` | Rozwinięcie tablicy do wierszy |
-| `AS` | `[Aa][Ss]` | Alias wyrażenia lub rozwinięcia |
-| `AND` | `[Aa][Nn][Dd]` | Koniunkcja logiczna |
-| `OR` | `[Oo][Rr]` | Alternatywa logiczna |
-| `NOT` | `[Nn][Oo][Tt]` | Negacja logiczna (prefiks) |
-| `ASC` | `[Aa][Ss][Cc]` | Sortowanie rosnące |
-| `DESC` | `[Dd][Ee][Ss][Cc]` | Sortowanie malejące |
-| `COUNT` | `[Cc][Oo][Uu][Nn][Tt]` | Agregat: liczba elementów tablicy |
-| `SUM` | `[Ss][Uu][Mm]` | Agregat: suma elementów tablicy |
-| `AVG` | `[Aa][Vv][Gg]` | Agregat: średnia elementów tablicy |
-| `MIN_F` | `[Mm][Ii][Nn]` | Agregat: minimum tablicy |
-| `MAX_F` | `[Mm][Aa][Xx]` | Agregat: maksimum tablicy |
-| `NULL` | `[Nn][Uu][Ll][Ll]` | Literał null |
-| `JOIN` | `[Jj][Oo][Ii][Nn]` | Łączenie dwóch źródeł JSON |
-| `ON` | `[Oo][Nn]` | Warunek łączenia w JOIN |
+| `SELECT` | `[Ss][Ee][Ll][Ee][Cc][Tt]` | Projekcja danych. |
+| `FROM` | `[Ff][Rr][Oo][Mm]` | Źródłowa kolekcja. |
+| `WHERE` | `[Ww][Hh][Ee][Rr][Ee]` | Warunek filtrowania. |
+| `GROUP` | `[Gg][Rr][Oo][Uu][Pp]` | Grupowanie wyników. |
+| `HAVING` | `[Hh][Aa][Vv][Ii][Nn][Gg]` | Warunek po agregacji grup. |
+| `ORDER` | `[Oo][Rr][Dd][Ee][Rr]` | Sortowanie. |
+| `BY` | `[Bb][Yy]` | Część `ORDER BY`. |
+| `LIMIT` | `[Ll][Ii][Mm][Ii][Tt]` | Ograniczenie liczby wyników. |
+| `UNNEST` | `[Uu][Nn][Nn][Ee][Ss][Tt]` | Rozwinięcie tablicy. |
+| `AS` | `[Aa][Ss]` | Alias. |
+| `AND` | `[Aa][Nn][Dd]` | Koniunkcja. |
+| `OR` | `[Oo][Rr]` | Alternatywa. |
+| `NOT` | `[Nn][Oo][Tt]` | Negacja. |
+| `ASC` | `[Aa][Ss][Cc]` | Sortowanie rosnące. |
+| `DESC` | `[Dd][Ee][Ss][Cc]` | Sortowanie malejące. |
+| `COUNT` | `[Cc][Oo][Uu][Nn][Tt]` | Liczba wierszy lub nie-nullowych wartości w grupie. |
+| `SUM` | `[Ss][Uu][Mm]` | Suma wartości w grupie. |
+| `AVG` | `[Aa][Vv][Gg]` | Średnia wartości w grupie. |
+| `MIN_F` | `[Mm][Ii][Nn]` | Minimum wartości w grupie. |
+| `MAX_F` | `[Mm][Aa][Xx]` | Maksimum wartości w grupie. |
+| `ARRAY_COUNT` | `ARRAY_COUNT` case-insensitive | Liczba elementów tablicy w pojedynczym rekordzie. |
+| `ARRAY_SUM` | `ARRAY_SUM` case-insensitive | Suma elementów tablicy w pojedynczym rekordzie. |
+| `ARRAY_AVG` | `ARRAY_AVG` case-insensitive | Średnia elementów tablicy w pojedynczym rekordzie. |
+| `ARRAY_MIN` | `ARRAY_MIN` case-insensitive | Minimum tablicy w pojedynczym rekordzie. |
+| `ARRAY_MAX` | `ARRAY_MAX` case-insensitive | Maksimum tablicy w pojedynczym rekordzie. |
+| `NULL` | `[Nn][Uu][Ll][Ll]` | Literał null. |
+| `JOIN` | `[Jj][Oo][Ii][Nn]` | Łączenie kolekcji. |
+| `ON` | `[Oo][Nn]` | Warunek JOIN. |
+| `INNER` | `[Ii][Nn][Nn][Ee][Rr]` | Jawny inner join. |
+| `LEFT`, `RIGHT`, `FULL` | case-insensitive | Zewnętrzne warianty JOIN. |
+| `OUTER` | `[Oo][Uu][Tt][Ee][Rr]` | Opcjonalne słowo w `LEFT/RIGHT/FULL OUTER JOIN`. |
+| `NATURAL` | `[Nn][Aa][Tt][Uu][Rr][Aa][Ll]` | JOIN po wspólnych polach. |
+| `UNION` | `[Uu][Nn][Ii][Oo][Nn]` | Suma zbiorów wyników. |
+| `INTERSECT` | `[Ii][Nn][Tt][Ee][Rr][Ss][Ee][Cc][Tt]` | Część wspólna wyników. |
+| `EXCEPT` | `[Ee][Xx][Cc][Ee][Pp][Tt]` | Różnica wyników. |
+| `LIKE` | `[Ll][Ii][Kk][Ee]` | Dopasowanie wzorca czułe na wielkość liter. |
+| `ILIKE` | `[Ii][Ll][Ii][Kk][Ee]` | Dopasowanie wzorca ignorujące wielkość liter. |
+| `CREATE` | `[Cc][Rr][Ee][Aa][Tt][Ee]` | Tworzenie kolekcji. |
+| `COLLECTION` | `[Cc][Oo][Ll][Ll][Ee][Cc][Tt][Ii][Oo][Nn]` | Słowo kluczowe kolekcji. |
+| `INSERT` | `[Ii][Nn][Ss][Ee][Rr][Tt]` | Dodanie rekordu. |
+| `INTO` | `[Ii][Nn][Tt][Oo]` | Docelowa kolekcja INSERT. |
+| `VALUE` | `[Vv][Aa][Ll][Uu][Ee]` | Wartość rekordu INSERT. |
+| `UPDATE` | `[Uu][Pp][Dd][Aa][Tt][Ee]` | Aktualizacja rekordów. |
+| `SET` | `[Ss][Ee][Tt]` | Lista przypisań UPDATE. |
+| `DELETE` | `[Dd][Ee][Ll][Ee][Tt][Ee]` | Usunięcie rekordów. |
 
 ### Literały
 
-| Token | Wzorzec (regex) | Przykłady | Opis |
+| Token | Wzorzec | Przykłady | Opis |
 |---|---|---|---|
-| `BOOLEAN_LIT` | `true\|false` (case-insensitive) | `true`, `False`, `TRUE` | Wartość logiczna |
-| `INTEGER_LIT` | `[0-9]+` | `0`, `42`, `1000` | Liczba całkowita bez znaku |
-| `FLOAT_LIT` | `[0-9]+'.'[0-9]*` lub `'.'[0-9]+` | `3.14`, `.5`, `2.` | Liczba zmiennoprzecinkowa bez znaku |
-| `STRING_LIT` | `"..."` lub `'...'` z obsługą `\`-escape | `"hello"`, `'world'`, `"O\'Brien"` | Łańcuch znaków |
+| `BOOLEAN_LIT` | `true\|false` case-insensitive | `true`, `False` | Wartość logiczna. |
+| `INTEGER_LIT` | `[0-9]+` | `0`, `42` | Liczba całkowita. |
+| `FLOAT_LIT` | `[0-9]+'.'[0-9]*` lub `'.'[0-9]+` | `3.14`, `.5` | Liczba zmiennoprzecinkowa. |
+| `STRING_LIT` | `"..."` albo `'...'` | `'Ala'`, `"Ola"` | Łańcuch znaków. |
 
 ### Identyfikatory
 
-| Token | Wzorzec (regex) | Opis |
+| Token | Wzorzec | Opis |
 |---|---|---|
-| `IDENTIFIER` | `[a-zA-Z_][a-zA-Z_0-9]*` | Nazwa zmiennej, pola, aliasu. Słowa kluczowe mają pierwszeństwo przy identycznym dopasowaniu. |
+| `IDENTIFIER` | `[a-zA-Z_][a-zA-Z_0-9]*` | Nazwa kolekcji, pola lub aliasu. |
 
 ### Operatory i znaki przestankowe
 
 | Token | Leksem | Opis |
 |---|---|---|
-| `EQ` | `=` | Równość |
-| `NEQ` | `!=` | Nierówność |
-| `LT` | `<` | Mniejszy niż |
-| `GT` | `>` | Większy niż |
-| `LEQ` | `<=` | Mniejszy lub równy |
-| `GEQ` | `>=` | Większy lub równy |
-| `PLUS` | `+` | Dodawanie |
-| `MINUS` | `-` | Odejmowanie / negacja unaryczna |
-| `STAR` | `*` | Mnożenie / SELECT * |
-| `SLASH` | `/` | Dzielenie |
-| `LPAREN` | `(` | Nawias otwierający |
-| `RPAREN` | `)` | Nawias zamykający |
-| `COMMA` | `,` | Separator elementów listy |
-| `DOT` | `.` | Separator segmentów ścieżki |
-| `SEMICOLON` | `;` | Separator zapytań |
-
-### Tokeny pomijane
-
-| Token | Wzorzec | Opis |
-|---|---|---|
-| `WS` | `[ \t\r\n]+` | Białe znaki — pomijane |
-| `LINE_COMMENT` | `'--' [^\r\n]*` | Komentarz liniowy — pomijany |
+| `EQ` | `=` | Równość albo przypisanie. |
+| `NEQ` | `!=` | Nierówność. |
+| `LT`, `GT`, `LEQ`, `GEQ` | `<`, `>`, `<=`, `>=` | Porównania. |
+| `PLUS`, `MINUS`, `STAR`, `SLASH` | `+`, `-`, `*`, `/` | Operatory arytmetyczne. |
+| `LPAREN`, `RPAREN` | `(`, `)` | Nawiasy okrągłe. |
+| `LBRACE`, `RBRACE` | `{`, `}` | Literał obiektu. |
+| `LBRACK`, `RBRACK` | `[`, `]` | Literał tablicy. |
+| `COMMA` | `,` | Separator. |
+| `DOT` | `.` | Separator ścieżki. |
+| `COLON` | `:` | Separator klucza i wartości w obiekcie. |
+| `SEMICOLON` | `;` | Koniec instrukcji. |
 
 ---
 
 ## Gramatyka w notacji ANTLR4
 
-Pełny plik gramatyki: [grammar/JsonQuery.g4](grammar/JsonQuery.g4)
-
-Poniżej opis struktury gramatyki z komentarzem do kluczowych decyzji.
-
-### Reguły parsera
+Pełny plik gramatyki znajduje się w `grammar/JsonQuery.g4`. Poniżej najważniejsza część gramatyki bez akcji semantycznych.
 
 ```antlr
-grammar JsonQuery;
-
 program
-    : query+ EOF
+    : statement+ EOF
     ;
 
-query
-    : selectStmt SEMICOLON
+statement
+    : queryExpr SEMICOLON
+    | createStmt SEMICOLON
+    | insertStmt SEMICOLON
+    | updateStmt SEMICOLON
+    | deleteStmt SEMICOLON
     ;
 
-selectStmt
+queryExpr
+    : selectCore setTail* orderByClause? limitClause?
+    ;
+
+setTail
+    : setOp selectCore
+    ;
+
+setOp
+    : UNION
+    | INTERSECT
+    | EXCEPT
+    ;
+
+selectCore
     : SELECT selectList
       FROM source
       joinClause?
       unnestClause*
       whereClause?
-      orderByClause?
-      limitClause?
+      groupByClause?
+      havingClause?
+    ;
+
+createStmt
+    : CREATE COLLECTION IDENTIFIER FROM arrayLiteral
+    ;
+
+insertStmt
+    : INSERT INTO IDENTIFIER VALUE objectLiteral
+    ;
+
+updateStmt
+    : UPDATE IDENTIFIER SET assignment (COMMA assignment)* whereClause?
+    ;
+
+deleteStmt
+    : DELETE FROM IDENTIFIER whereClause?
+    ;
+
+assignment
+    : path EQ expr
     ;
 
 selectList
-    : STAR                                  # SelectAll
-    | selectItem (COMMA selectItem)*        # SelectItems
+    : STAR
+    | selectItem (COMMA selectItem)*
     ;
 
 selectItem
-    : expr (AS IDENTIFIER)?
+    : path DOT STAR
+    | expr (AS IDENTIFIER)?
     ;
 
 source
@@ -211,7 +287,14 @@ source
     ;
 
 joinClause
-    : JOIN IDENTIFIER (AS IDENTIFIER)? ON expr
+    : NATURAL? joinType? JOIN IDENTIFIER (AS IDENTIFIER)? (ON expr)?
+    ;
+
+joinType
+    : INNER
+    | LEFT OUTER?
+    | RIGHT OUTER?
+    | FULL OUTER?
     ;
 
 unnestClause
@@ -220,6 +303,14 @@ unnestClause
 
 whereClause
     : WHERE expr
+    ;
+
+groupByClause
+    : GROUP BY path (COMMA path)*
+    ;
+
+havingClause
+    : HAVING expr
     ;
 
 orderByClause
@@ -234,28 +325,63 @@ limitClause
     : LIMIT INTEGER_LIT
     ;
 
-// Priorytety operatorów: w ANTLR4 dla reguł lewostronnie
-// rekurencyjnych PIERWSZA alternatywa = NAJWYŻSZY priorytet.
 expr
-    : primary                               # PrimaryExpr
-    | MINUS expr                            # UnaryMinus
-    | expr (STAR  | SLASH) expr             # MulExpr
-    | expr (PLUS  | MINUS) expr             # AddExpr
-    | expr compOp expr                      # CompareExpr
-    | NOT expr                              # NotExpr
-    | expr AND expr                         # AndExpr
-    | expr OR  expr                         # OrExpr
+    : primary
+    | MINUS expr
+    | expr (STAR | SLASH) expr
+    | expr (PLUS | MINUS) expr
+    | expr compOp expr
+    | NOT expr
+    | expr AND expr
+    | expr OR expr
+    ;
+
+compOp
+    : EQ | NEQ | LT | GT | LEQ | GEQ
+    | LIKE
+    | ILIKE
+    | NOT LIKE
+    | NOT ILIKE
     ;
 
 primary
-    : aggFunc LPAREN path RPAREN           # AggExpr
-    | path                                  # PathExpr
-    | literal                               # LiteralExpr
-    | LPAREN expr RPAREN                    # ParenExpr
+    : aggFunc LPAREN aggregateArg RPAREN
+    | arrayAggFunc LPAREN path RPAREN
+    | path
+    | literal
+    | objectLiteral
+    | arrayLiteral
+    | LPAREN expr RPAREN
     ;
 
 aggFunc
     : COUNT | SUM | AVG | MIN_F | MAX_F
+    ;
+
+arrayAggFunc
+    : ARRAY_COUNT | ARRAY_SUM | ARRAY_AVG | ARRAY_MIN | ARRAY_MAX
+    ;
+
+aggregateArg
+    : STAR
+    | expr
+    ;
+
+objectLiteral
+    : LBRACE (objectProperty (COMMA objectProperty)*)? RBRACE
+    ;
+
+objectProperty
+    : objectKey COLON expr
+    ;
+
+objectKey
+    : IDENTIFIER
+    | STRING_LIT
+    ;
+
+arrayLiteral
+    : LBRACK (expr (COMMA expr)*)? RBRACK
     ;
 
 path
@@ -269,135 +395,186 @@ literal
     | BOOLEAN_LIT
     | NULL
     ;
-
-compOp
-    : EQ | NEQ | LT | GT | LEQ | GEQ
-    ;
 ```
 
-### Reguły leksera
-
-```antlr
-// Słowa kluczowe (case-insensitive, przed IDENTIFIER)
-SELECT  : [Ss][Ee][Ll][Ee][Cc][Tt] ;
-FROM    : [Ff][Rr][Oo][Mm] ;
-WHERE   : [Ww][Hh][Ee][Rr][Ee] ;
-ORDER   : [Oo][Rr][Dd][Ee][Rr] ;
-BY      : [Bb][Yy] ;
-LIMIT   : [Ll][Ii][Mm][Ii][Tt] ;
-UNNEST  : [Uu][Nn][Nn][Ee][Ss][Tt] ;
-AS      : [Aa][Ss] ;
-AND     : [Aa][Nn][Dd] ;
-OR      : [Oo][Rr] ;
-NOT     : [Nn][Oo][Tt] ;
-ASC     : [Aa][Ss][Cc] ;
-DESC    : [Dd][Ee][Ss][Cc] ;
-COUNT   : [Cc][Oo][Uu][Nn][Tt] ;
-SUM     : [Ss][Uu][Mm] ;
-AVG     : [Aa][Vv][Gg] ;
-MIN_F   : [Mm][Ii][Nn] ;
-MAX_F   : [Mm][Aa][Xx] ;
-NULL    : [Nn][Uu][Ll][Ll] ;
-JOIN    : [Jj][Oo][Ii][Nn] ;
-ON      : [Oo][Nn] ;
-
-BOOLEAN_LIT : [Tt][Rr][Uu][Ee] | [Ff][Aa][Ll][Ss][Ee] ;
-
-IDENTIFIER  : [a-zA-Z_] [a-zA-Z_0-9]* ;
-
-FLOAT_LIT   : [0-9]+ '.' [0-9]* | '.' [0-9]+ ;
-INTEGER_LIT : [0-9]+ ;
-STRING_LIT  : '"'  ( ~["\\] | '\\' . )* '"'
-            | '\'' ( ~['\\] | '\\' . )* '\''
-            ;
-
-// Operatory (wieloznakowe przed jednoznakowymi)
-STAR    : '*' ;   COMMA   : ',' ;   DOT     : '.' ;   SEMICOLON : ';' ;
-LPAREN  : '(' ;   RPAREN  : ')' ;
-PLUS    : '+' ;   MINUS   : '-' ;   SLASH   : '/' ;
-LEQ     : '<=' ;  GEQ     : '>=' ;  NEQ     : '!=' ;
-EQ      : '='  ;  LT      : '<'  ;  GT      : '>'  ;
-
-// Pomijane
-WS          : [ \t\r\n]+  -> skip ;
-LINE_COMMENT : '--' ~[\r\n]* -> skip ;
-```
-
-### Priorytety i łączność operatorów (podsumowanie)
-
-| Poziom | Operatory | Łączność |
-|---|---|---|
-| 1 (najniższy) | `OR` | lewostronna |
-| 2 | `AND` | lewostronna |
-| 3 | `NOT` | prawostronna (prefiks) |
-| 4 | `=` `!=` `<` `>` `<=` `>=` | brak łączności (nieporównywalne) |
-| 5 | `+` `-` | lewostronna |
-| 6 | `*` `/` | lewostronna |
-| 7 | unarny `-` | prawostronna (prefiks) |
-| 8 (najwyższy) | `COUNT(...)`, ścieżka, literał, `(...)` | — |
+Priorytety operatorów w regule `expr` są zgodne z mechanizmem lewostronnej rekurencji ANTLR4: wcześniejsze alternatywy mają wyższy priorytet.
 
 ---
+## Użyte technologie i pakiety zewnętrzne
 
-## Instalacja i uruchomienie
+| Komponent | Technologia |
+|---|---|
+| Generator parsera | ANTLR4 |
+| Runtime parsera | `antlr4` |
+| Język implementacji | JavaScript ESM |
+| Runtime | Node.js |
+| TUI | Ink + React |
+| Kolory terminala | chalk |
+| Wybór pliku w TUI | ink-select-input |
+| Duży tytuł ASCII | figlet |
+
+---
+## Krótka instrukcja obsługi
 
 ### Wymagania
-- Node.js ≥ 18
-- Java (do generacji parsera z ANTLR4)
+
+- Node.js >= 18
+- Java do generowania parsera ANTLR4
 
 ### Instalacja
+
 ```bash
-# Zainstaluj zależności
 npm install
-
-# Wygeneruj lexer/parser z gramatyki (wymaga Java)
-java -jar antlr-4.13.1-complete.jar -Dlanguage=JavaScript -visitor -no-listener -o src/generated grammar/JsonQuery.g4
+npm run generate
 ```
 
-### Tryb interaktywny (TUI)
-```bash
-# Z podaniem pliku danych
-node src/index.js -d data/users.json
+### Tryb interaktywny TUI
 
-# Bez pliku — TUI poprosi o ścieżkę
+```bash
 node src/index.js
+node src/index.js -d data/users.json
 ```
 
-### Tryb jednorazowy
+W TUI można wybrać istniejącą bazę lub utworzyć nową. Po poprawnych instrukcjach `CREATE`, `INSERT`, `UPDATE`, `DELETE` zmiany są automatycznie zapisywane do aktywnego pliku `.json`.
+
+Skróty w TUI:
+
+- `Enter` — wykonanie instrukcji,
+- `Shift+Enter` albo `Ctrl+J` — wstawienie nowej linii w edytorze zapytania,
+- `Left` / `Right` / `Up` / `Down` — przesuwanie kursora w aktualnej instrukcji wieloliniowej,
+- `Up` / `Down` na pierwszej albo ostatniej linii — historia instrukcji,
+- `Ctrl+O` — wybór lub zmiana aktywnej bazy danych,
+- `Ctrl+D` — pokazanie albo ukrycie wygenerowanego kodu JavaScript,
+- `Ctrl+Q` albo `Ctrl+C` — wyjście.
+
+### Tryb jednorazowy CLI
+
 ```bash
-# Wykonaj zapytanie i wydrukuj wynik jako JSON
 node src/index.js -e "SELECT name, age FROM users WHERE age > 18;" -d data/users.json
+```
 
-# Wykonaj zapytanie i pokaz tell wygenerowany kod JavaScript
+Mutacje z CLI domyślnie nie nadpisują pliku wejściowego. Aby zapisać wynik z powrotem do bazy przekazanej przez `-d`, należy dodać `--save`:
+
+```bash
+node src/index.js -e "INSERT INTO users VALUE { id: 99, name: 'Ola' };" -d db.json --save
+```
+
+### Uruchamianie skryptów `.s2j`
+
+Plik `commands.s2j`:
+
+```sql
+CREATE COLLECTION people FROM [{ id: 1, name: 'Ala', age: 20 }];
+INSERT INTO people VALUE { id: 2, name: 'Ola', age: 21 };
+SELECT name, age FROM people ORDER BY id ASC;
+```
+
+Uruchomienie:
+
+```bash
+node src/index.js -f commands.s2j -d db.json
+node src/index.js -f commands.s2j -d db.json --save
+```
+
+### Przykład użycia
+
+```bash
+node src/index.js -e "CREATE COLLECTION people FROM [{ id: 1, name: 'Ala', age: 20 }]; INSERT INTO people VALUE { id: 2, name: 'Ola', age: 21 }; SELECT name, age FROM people ORDER BY id ASC;" -d people.json --save
+```
+
+Wynik na standardowym wyjściu:
+
+```json
+[
+  {
+    "name": "Ala",
+    "age": 20
+  },
+  {
+    "name": "Ola",
+    "age": 21
+  }
+]
+```
+
+### Zapisywanie wyników
+
+```bash
+# Zapis wyniku SELECT
+node src/index.js -e "SELECT name FROM users;" -d db.json -o out/result.json
+
+# Zapis całej zmodyfikowanej bazy do osobnego pliku
+node src/index.js -f commands.s2j -d db.json --write-dataset out/db-after.json
+```
+
+### Debug
+
+```bash
 node src/index.js -e "SELECT name FROM users LIMIT 1;" -d data/users.json --debug
-
-# Rozszerzony debug: tokeny, AST i wygenerowany kod JavaScript
 node src/index.js -e "SELECT name FROM users LIMIT 1;" -d data/users.json --ex-debug
-
-# Z JOIN
-node src/index.js -e "SELECT u.name, o.product FROM users AS u JOIN orders AS o ON u.id = o.userId;" -d data/users.json -j data/orders.json
 ```
 
 ### Pomoc
+
 ```bash
 node src/index.js --help
 ```
 
-### Przykłady diagnostyki błędów
+---
 
-Poniższe komendy celowo zawierają błędy i pokazują podział diagnostyki na fazy: `lexical`, `syntax`, `semantic`, `runtime`.
+## Przykłady diagnostyki błędów
 
 ```bash
-# Błąd leksykalny: znak @ nie należy do języka zapytań
+# Błąd leksykalny
 node src/index.js -e "SELECT name FROM users WHERE age > @;" -d data/users.json
 
-# Błąd składniowy: brakuje FROM po liście SELECT
+# Błąd leksykalny: niedozwolony znak w wyrażeniu
+node src/index.js -e "SELECT name FROM users WHERE age # 18;" -d data/users.json
+
+# Błąd składniowy
 node src/index.js -e "SELECT name users;" -d data/users.json
 
-# Błąd semantyczny: alias u został zadeklarowany dwa razy
-node src/index.js -e "SELECT u.name FROM users AS u JOIN orders AS u ON u.id = u.id;" -d data/users.json -j data/orders.json
+# Błąd składniowy: brak średnika w pliku skryptu
+node src/index.js -f broken-script.s2j -d db.json
 
-# Błąd runtime: data jest katalogiem, a program wymaga pliku .json
+# Błąd semantyczny
+node src/index.js -e "SELECT missingField FROM users;" -d data/users.json
+
+# Błąd semantyczny: nieistniejąca kolekcja
+node src/index.js -e "SELECT name FROM missing;" -d data/users.json
+
+# Błąd semantyczny: INSERT do nieistniejącej kolekcji
+node src/index.js -e "INSERT INTO missing VALUE { id: 1 };" -d data/users.json
+
+# Błąd semantyczny: UPDATE nieistniejącego pola przy znanym schemacie
+node src/index.js -e "UPDATE users SET missingField = 1 WHERE id = 1;" -d data/users.json
+
+# Błąd semantyczny: UNNEST wymaga tablicy
+node src/index.js -e "SELECT name FROM users UNNEST(age) AS item;" -d data/users.json
+
+# Błąd semantyczny: funkcja ARRAY_* wymaga tablicy
+node src/index.js -e "SELECT ARRAY_SUM(age) FROM users;" -d data/users.json
+
+# Błąd semantyczny: agregat grupowy nie może być użyty w WHERE
+node src/index.js -e "SELECT name FROM users WHERE COUNT(*) > 1;" -d data/users.json
+
+# Błąd semantyczny: zwykłe pole w SELECT musi wystąpić w GROUP BY
+node src/index.js -e "SELECT address.city, name, COUNT(*) FROM users GROUP BY address.city;" -d data/users.json
+
+# Błąd semantyczny: JOIN wymaga warunku ON, jeśli nie jest NATURAL JOIN
+node src/index.js -e "SELECT * FROM users JOIN orders;" -d data/users.json -j data/orders.json
+
+# Błąd semantyczny: NATURAL JOIN bez wspólnych pól najwyższego poziomu
+node src/index.js -e "SELECT * FROM lefts NATURAL JOIN unrelated;" -d natural.json
+
+# Błąd runtime
 node src/index.js -e "SELECT name FROM users;" -d data
+
+# Błąd runtime: niepoprawny JSON w pliku bazy
+node src/index.js -e "SELECT name FROM users;" -d broken.json
+
+# Błąd argumentów CLI: -e i -f są wzajemnie wykluczające
+node src/index.js -e "SELECT * FROM users;" -f commands.s2j -d data/users.json
 ```
 
 Przykładowy format błędu:
@@ -410,15 +587,433 @@ Przykładowy format błędu:
   offending text: "users"
 ```
 
+Rozróżnienie faz błędów pomaga wskazać, gdzie zatrzymał się pipeline:
+
+| Faza | Co oznacza | Przykład |
+|---|---|---|
+| `lexical` | Lexer nie potrafi rozpoznać znaku lub tokenu. | `@`, `#` w wyrażeniu. |
+| `syntax` | Parser dostał poprawne tokeny, ale w złej kolejności. | `SELECT name users;` |
+| `semantic` | Zapytanie ma poprawną składnię, ale nie zgadza się ze schematem lub regułami języka. | Nieznana kolekcja, zły `UNNEST`, brak `ON` w `JOIN`. |
+| `compiletime` | Błąd podczas budowy AST albo generowania JavaScriptu. | Nieobsłużony typ węzła AST. |
+| `runtime` | Kod został wygenerowany, ale nie udało się załadować lub przetworzyć danych. | Katalog zamiast pliku `.json`, uszkodzony JSON. |
+
+---
+## Wspierane instrukcje — przykłady
+
+```sql
+-- Utworzenie kolekcji
+CREATE COLLECTION people FROM [
+  { id: 1, name: 'Ala', age: 20 },
+  { id: 2, name: 'Ola', age: 21 }
+];
+
+-- Dodanie rekordu
+INSERT INTO people VALUE { id: 3, name: 'Jan', age: 17 };
+
+-- Aktualizacja rekordów
+UPDATE people
+SET age = age + 1
+WHERE name = 'Ala';
+
+-- Usunięcie rekordów
+DELETE FROM people
+WHERE age < 18;
+
+-- Prosty filtr z zagnieżdżoną ścieżką
+SELECT name, address.city FROM users WHERE age > 18 ORDER BY name ASC LIMIT 10;
+
+-- Płytkie rozwinięcie pól obiektu address do kolumn address.city, address.street itd.
+SELECT name, address.* FROM users;
+
+-- Rozwinięcie tablicy przez UNNEST
+SELECT name, tag FROM users UNNEST(tags) AS tag WHERE tag = 'admin';
+
+-- Funkcja tablicowa na tablicy wewnątrz rekordu
+SELECT name, ARRAY_COUNT(orders) FROM customers WHERE ARRAY_COUNT(orders) > 3;
+
+-- Agregat grupowy po wierszach
+SELECT address.city, COUNT(*), AVG(age)
+FROM users
+GROUP BY address.city
+HAVING COUNT(*) > 1;
+
+-- JOIN dwóch kolekcji
+SELECT u.name, o.product, o.total
+FROM users AS u
+JOIN orders AS o ON u.id = o.userId
+WHERE o.total > 100
+ORDER BY o.total DESC;
+
+-- LEFT JOIN zachowuje rekordy z lewej kolekcji bez dopasowania
+SELECT *
+FROM users AS u
+LEFT JOIN orders AS o ON u.id = o.userId;
+
+-- NATURAL JOIN dopasowuje po wspólnych polach najwyższego poziomu
+SELECT *
+FROM lefts NATURAL JOIN rights;
+
+-- Operacje zbiorowe są domyślnie bez duplikatów
+SELECT name FROM users
+UNION
+SELECT name FROM customers
+ORDER BY name
+LIMIT 10;
+
+-- LIKE / ILIKE
+SELECT name FROM users WHERE name LIKE 'Ali%';
+SELECT name FROM users WHERE email ILIKE '%@EXAMPLE.COM';
+```
+
 ---
 
-## Użyte technologie
+## Rozszerzone przykłady użycia
 
-| Komponent | Technologia |
-|---|---|
-| Generator parsera | ANTLR4 |
-| Język implementacji | JavaScript (ESM) |
-| Runtime | Node.js |
-| TUI | Ink (React for terminals) |
-| Kolory terminala | chalk |
+Poniższe przykłady pokazują typowe scenariusze testowania kompilatora i runtime'u. Zapytania można uruchamiać w TUI albo przez `-e`, np.:
 
+```bash
+node src/index.js -e "SELECT name FROM users LIMIT 3;" -d data/users.json
+```
+
+### Filtrowanie, sortowanie i aliasy
+
+```sql
+-- Projekcja z aliasami kolumn
+SELECT name AS userName, age AS userAge
+FROM users
+WHERE age >= 18
+ORDER BY age DESC
+LIMIT 5;
+
+-- Warunek z AND, OR, NOT i nawiasami
+SELECT name, age, profile.score
+FROM users
+WHERE (age > 25 AND profile.active = true) OR NOT address.city = 'Warszawa'
+ORDER BY profile.score DESC;
+
+-- Porównanie tekstu czułe i nieczułe na wielkość liter
+SELECT name FROM users WHERE name LIKE 'Ali%';
+SELECT email FROM users WHERE email ILIKE '%@EXAMPLE.COM';
+SELECT name FROM users WHERE name NOT ILIKE 'ewa%';
+```
+
+### Pola zagnieżdżone, tablice i agregaty
+
+```sql
+-- Bezpośredni dostęp do pól obiektów
+SELECT name, address.city, profile.active
+FROM users
+WHERE profile.score >= 80;
+
+-- Rozwinięcie tablicy na wiele wierszy
+SELECT name, tag
+FROM users
+UNNEST(tags) AS tag
+WHERE tag = 'developer';
+
+-- Funkcje tablicowe na tablicach wewnątrz rekordu
+SELECT name, ARRAY_COUNT(orders)
+FROM users
+WHERE ARRAY_COUNT(orders) > 2;
+
+-- Funkcje tablicowe na polu obiektu w tablicy
+SELECT name, ARRAY_SUM(orders.total), ARRAY_AVG(orders.total), ARRAY_MIN(orders.total), ARRAY_MAX(orders.total)
+FROM users
+ORDER BY name ASC;
+
+-- Agregaty grupowe po wierszach
+SELECT address.city, COUNT(*), SUM(age), AVG(age), MIN(age), MAX(age)
+FROM users
+GROUP BY address.city
+HAVING COUNT(*) > 1
+ORDER BY address.city ASC;
+
+-- Łączenie obu poziomów: najpierw suma tablicy w rekordzie, potem suma po grupie
+SELECT address.city, SUM(ARRAY_SUM(orders.total))
+FROM users
+GROUP BY address.city;
+
+-- COUNT(*) liczy wszystkie wiersze po filtrze WHERE
+SELECT COUNT(*)
+FROM users
+WHERE age >= 18;
+
+-- COUNT(pole) liczy tylko wiersze, w których pole nie jest null / missing
+SELECT COUNT(email), COUNT(profile.score)
+FROM users;
+
+-- SUM / AVG / MIN / MAX bez GROUP BY zwracają jeden wiersz dla całej kolekcji
+SELECT COUNT(*), SUM(age), AVG(age), MIN(age), MAX(age)
+FROM users;
+
+-- Grupowanie po jednym polu zagnieżdżonym
+SELECT address.city, COUNT(*), AVG(age)
+FROM users
+GROUP BY address.city;
+
+-- Grupowanie po kilku kluczach
+SELECT address.city, profile.active, COUNT(*), MIN(age), MAX(age)
+FROM users
+GROUP BY address.city, profile.active
+ORDER BY address.city ASC;
+
+-- HAVING filtruje już policzone grupy, a nie pojedyncze rekordy
+SELECT address.city, COUNT(*), AVG(age)
+FROM users
+GROUP BY address.city
+HAVING COUNT(*) >= 2 AND AVG(age) > 25;
+
+-- COUNT(*) można łączyć z COUNT(pole), żeby wykryć brakujące wartości
+SELECT address.city, COUNT(*), COUNT(email)
+FROM users
+GROUP BY address.city
+HAVING COUNT(*) > COUNT(email);
+
+-- ARRAY_COUNT działa na tablicy w pojedynczym rekordzie
+SELECT name, ARRAY_COUNT(tags), ARRAY_COUNT(orders)
+FROM users
+WHERE ARRAY_COUNT(tags) > 0;
+
+-- ARRAY_SUM / ARRAY_AVG / ARRAY_MIN / ARRAY_MAX na tablicy liczb
+CREATE COLLECTION metrics FROM [
+  { id: 1, scores: [10, 20, 30] },
+  { id: 2, scores: [5, 15] },
+  { id: 3, scores: [] }
+];
+
+SELECT id, ARRAY_SUM(scores), ARRAY_AVG(scores), ARRAY_MIN(scores), ARRAY_MAX(scores)
+FROM metrics;
+
+-- ARRAY_* na polu obiektu w tablicy, np. orders.total
+SELECT name,
+       ARRAY_SUM(orders.total),
+       ARRAY_AVG(orders.total),
+       ARRAY_MIN(orders.total),
+       ARRAY_MAX(orders.total)
+FROM users;
+
+-- Agregacja grupowa po wartościach policzonych z tablic w rekordach
+SELECT address.city,
+       COUNT(*),
+       SUM(ARRAY_SUM(orders.total)),
+       AVG(ARRAY_COUNT(orders)),
+       MAX(ARRAY_MAX(orders.total))
+FROM users
+GROUP BY address.city
+HAVING SUM(ARRAY_SUM(orders.total)) > 100;
+
+-- JOIN + agregacja: suma zamówień i liczba zamówień na użytkownika
+SELECT u.name, COUNT(*), SUM(o.total), AVG(o.total), MIN(o.total), MAX(o.total)
+FROM users AS u
+JOIN orders AS o ON u.id = o.userId
+GROUP BY u.name
+HAVING SUM(o.total) > 100;
+
+-- UNNEST + agregacja: najczęściej występujące tagi
+SELECT tag, COUNT(*)
+FROM users
+UNNEST(tags) AS tag
+GROUP BY tag
+HAVING COUNT(*) > 1
+ORDER BY tag ASC;
+
+-- Niepoprawne: agregaty grupowe nie działają w WHERE, do tego służy HAVING
+SELECT address.city, COUNT(*)
+FROM users
+WHERE COUNT(*) > 1
+GROUP BY address.city;
+
+-- Niepoprawne: pole poza agregatem musi być w GROUP BY
+SELECT address.city, name, COUNT(*)
+FROM users
+GROUP BY address.city;
+
+-- Niepoprawne: ARRAY_SUM wymaga tablicy, nie zwykłej liczby
+SELECT ARRAY_SUM(age)
+FROM users;
+```
+
+### Mutacje danych
+
+```sql
+-- Utworzenie nowej kolekcji
+CREATE COLLECTION tasks FROM [
+  { id: 1, title: 'Parser', done: false },
+  { id: 2, title: 'Codegen', done: false }
+];
+
+-- Dodanie rekordu
+INSERT INTO tasks VALUE { id: 3, title: 'Tests', done: false };
+
+-- Aktualizacja jednego lub wielu rekordów
+UPDATE tasks
+SET done = true
+WHERE title = 'Parser';
+
+-- Aktualizacja pola zagnieżdżonego
+UPDATE users
+SET profile.score = profile.score + 1
+WHERE profile.active = true;
+
+-- Usunięcie rekordów spełniających warunek
+DELETE FROM tasks
+WHERE done = true;
+```
+
+W TUI mutacje zapisują się automatycznie do aktywnej bazy. W trybie CLI trzeba dodać `--save`, jeśli wynik ma nadpisać plik z `-d`:
+
+```bash
+node src/index.js -e "INSERT INTO users VALUE { id: 99, name: 'Test', age: 20 };" -d data/users.json --save
+```
+
+### JOIN różnych typów
+
+Do przykładów z osobnym plikiem zamówień można użyć:
+
+```bash
+node src/index.js -e "SELECT u.name, o.product FROM users AS u JOIN orders AS o ON u.id = o.userId;" -d data/users.json -j data/orders.json
+```
+
+```sql
+-- Domyślny JOIN działa jak INNER JOIN
+SELECT u.name, o.product, o.total
+FROM users AS u
+JOIN orders AS o ON u.id = o.userId;
+
+-- Jawny INNER JOIN
+SELECT u.name, o.product
+FROM users AS u
+INNER JOIN orders AS o ON u.id = o.userId
+WHERE o.total > 1000;
+
+-- LEFT JOIN zachowuje wszystkich użytkowników z lewej strony
+SELECT u.name, o.product
+FROM users AS u
+LEFT JOIN orders AS o ON u.id = o.userId;
+
+-- RIGHT JOIN zachowuje wszystkie rekordy z prawej strony
+SELECT u.name, o.product
+FROM users AS u
+RIGHT JOIN orders AS o ON u.id = o.userId;
+
+-- FULL JOIN zachowuje niedopasowane rekordy z obu stron
+SELECT u.name, o.product
+FROM users AS u
+FULL JOIN orders AS o ON u.id = o.userId;
+
+-- SELECT * po JOIN ukrywa pola techniczne aliasów
+-- Konflikty nazw z prawej strony dostają prefiks aliasu, np. o.id
+SELECT *
+FROM users AS u
+LEFT OUTER JOIN orders AS o ON u.id = o.userId;
+
+-- Pola z prawej strony można pisać przez alias
+SELECT u.name, o.status, o.total
+FROM users AS u
+JOIN orders AS o ON u.id = o.userId;
+
+-- Unikalne, niekonfliktujące pola z prawej strony mogą być użyte bez aliasu
+SELECT name, product, total
+FROM users AS u
+JOIN orders AS o ON u.id = o.userId;
+```
+
+### NATURAL JOIN
+
+`NATURAL JOIN` dopasowuje rekordy po wspólnych polach najwyższego poziomu. Przykładowa baza:
+
+```json
+{
+  "lefts": [
+    { "id": 1, "code": "x", "leftValue": "L1" },
+    { "id": 2, "code": "y", "leftValue": "L2" }
+  ],
+  "rights": [
+    { "id": 1, "code": "x", "rightValue": "R1" },
+    { "id": 2, "code": "z", "rightValue": "R2" }
+  ]
+}
+```
+
+```sql
+-- Dopasowanie po wspólnych polach id oraz code
+SELECT *
+FROM lefts NATURAL JOIN rights;
+
+-- Warianty zewnętrzne też są obsługiwane
+SELECT leftValue, rightValue
+FROM lefts NATURAL LEFT JOIN rights;
+
+SELECT leftValue, rightValue
+FROM lefts NATURAL FULL JOIN rights;
+```
+
+### Operacje zbiorowe i unikalność wyników
+
+Projekt nie ma osobnego słowa kluczowego `UNIQUE`. Operacje `UNION`, `INTERSECT` i `EXCEPT` działają jak operacje zbiorowe, czyli usuwają duplikaty wierszy na podstawie wartości JSON.
+
+```sql
+-- UNION: suma wyników bez duplikatów
+SELECT name FROM users
+UNION
+SELECT name FROM customers
+ORDER BY name;
+
+-- INTERSECT: tylko wspólne wiersze
+SELECT name FROM users
+INTERSECT
+SELECT name FROM customers;
+
+-- EXCEPT: wiersze z lewej strony, których nie ma po prawej
+SELECT name FROM users
+EXCEPT
+SELECT name FROM customers
+ORDER BY name
+LIMIT 10;
+
+-- Duplikaty są usuwane dla całych obiektów wynikowych
+SELECT name, age FROM users
+UNION
+SELECT name, age FROM users;
+```
+
+### Skrypty `.s2j`
+
+Plik `commands.s2j` może zawierać wiele instrukcji wykonywanych po kolei:
+
+```sql
+CREATE COLLECTION people FROM [{ id: 1, name: 'Ala', age: 20 }];
+INSERT INTO people VALUE { id: 2, name: 'Ola', age: 21 };
+UPDATE people SET age = age + 1 WHERE id = 2;
+SELECT name, age FROM people ORDER BY id ASC;
+```
+
+Uruchomienie z zapisem zmian:
+
+```bash
+node src/index.js -f commands.s2j -d db.json --save
+```
+---
+## Testowanie
+
+```bash
+node src/test.js
+```
+
+Testy obejmują między innymi:
+
+- parsowanie `SELECT`, `CREATE`, `INSERT`, `UPDATE`, `DELETE`,
+- walidację kształtu bazy JSON,
+- wykonanie mutacji i zapytań,
+- uruchamianie skryptów `.s2j`,
+- zapis przez `--save`, `--output`, `--write-dataset`,
+- regresję dla wariantów `JOIN`, `NATURAL JOIN`, operacji zbiorowych, `LIKE`/`ILIKE`, `UNNEST`, funkcji `ARRAY_*`, agregatów grupowych, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`,
+- rozwijanie `path.*`, pełne wyświetlanie zagnieżdżonych wartości w tabelach i edytor wieloliniowy w TUI.
+---
+
+## Uwagi implementacyjne
+
+- Projekt nie używa JSX ani bundlera.
+- Interfejs TUI jest napisany przez `React.createElement`.
+- Wygenerowane pliki ANTLR w `src/generated/` są ignorowane przez Git.
+- Po przełączeniu commita lub zmianie gramatyki trzeba uruchomić `npm run generate`, aby parser odpowiadał aktualnej gramatyce.

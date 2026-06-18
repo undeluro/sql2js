@@ -255,20 +255,28 @@
     },
     {
       "id": 2,
-      "name": "Ola",
-      "age": 21
-    }
-  ],
-  "test": [
-    {
-      "id": 1,
-      "user_id": 3,
-      "name": "Test1"
+      "name": "Jan",
+      "age": 17
     },
     {
-      "id": 2,
-      "user_id": 8,
-      "name": "Test2"
+      "id": 3,
+      "name": "Ola",
+      "age": 21
+    },
+    {
+      "id": 4,
+      "name": "Dima",
+      "age": 67
+    }
+  ],
+  "legend_status": [
+    {
+      "id": 4,
+      "legend": "true"
+    },
+    {
+      "id": 1,
+      "legend": "false"
     }
   ]
 }

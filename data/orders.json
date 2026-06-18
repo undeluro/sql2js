@@ -1,14 +1,95 @@
-[
-  { "orderId": 101, "userId": 1, "product": "Laptop", "total": 4500, "status": "delivered" },
-  { "orderId": 102, "userId": 1, "product": "Klawiatura", "total": 250, "status": "delivered" },
-  { "orderId": 103, "userId": 1, "product": "Monitor", "total": 1800, "status": "shipped" },
-  { "orderId": 201, "userId": 2, "product": "GPU", "total": 3200, "status": "delivered" },
-  { "orderId": 202, "userId": 2, "product": "RAM", "total": 600, "status": "processing" },
-  { "orderId": 301, "userId": 3, "product": "Tablet", "total": 2100, "status": "delivered" },
-  { "orderId": 401, "userId": 4, "product": "Serwer", "total": 12000, "status": "delivered" },
-  { "orderId": 402, "userId": 4, "product": "Switch", "total": 800, "status": "shipped" },
-  { "orderId": 601, "userId": 6, "product": "Mysz", "total": 180, "status": "delivered" },
-  { "orderId": 602, "userId": 6, "product": "Słuchawki", "total": 450, "status": "processing" },
-  { "orderId": 801, "userId": 8, "product": "MacBook Pro", "total": 9800, "status": "delivered" },
-  { "orderId": 802, "userId": 8, "product": "Magic Keyboard", "total": 700, "status": "shipped" }
-]
+{
+  "orders": [
+    {
+      "orderId": 101,
+      "userId": 1,
+      "product": "Laptop",
+      "total": 4500,
+      "status": "delivered"
+    },
+    {
+      "orderId": 102,
+      "userId": 1,
+      "product": "Klawiatura",
+      "total": 250,
+      "status": "delivered"
+    },
+    {
+      "orderId": 103,
+      "userId": 1,
+      "product": "Monitor",
+      "total": 1800,
+      "status": "shipped"
+    },
+    {
+      "orderId": 201,
+      "userId": 2,
+      "product": "GPU",
+      "total": 3200,
+      "status": "delivered"
+    },
+    {
+      "orderId": 202,
+      "userId": 2,
+      "product": "RAM",
+      "total": 600,
+      "status": "processing"
+    },
+    {
+      "orderId": 301,
+      "userId": 3,
+      "product": "Tablet",
+      "total": 2100,
+      "status": "delivered"
+    },
+    {
+      "orderId": 401,
+      "userId": 4,
+      "product": "Serwer",
+      "total": 12000,
+      "status": "delivered"
+    },
+    {
+      "orderId": 402,
+      "userId": 4,
+      "product": "Switch",
+      "total": 800,
+      "status": "shipped"
+    },
+    {
+      "orderId": 601,
+      "userId": 6,
+      "product": "Mysz",
+      "total": 180,
+      "status": "delivered"
+    },
+    {
+      "orderId": 602,
+      "userId": 6,
+      "product": "Słuchawki",
+      "total": 450,
+      "status": "processing"
+    },
+    {
+      "orderId": 801,
+      "userId": 8,
+      "product": "MacBook Pro",
+      "total": 9800,
+      "status": "delivered"
+    },
+    {
+      "orderId": 802,
+      "userId": 8,
+      "product": "Magic Keyboard",
+      "total": 700,
+      "status": "shipped"
+    }
+  ],
+  "people": [
+    {
+      "id": 1,
+      "name": "Ala",
+      "age": 21
+    }
+  ]
+}

@@ -77,8 +77,12 @@ export function drawBox(title, content, width = 60) {
 const SQL_KEYWORDS = new Set([
   'SELECT', 'FROM', 'WHERE', 'ORDER', 'BY', 'LIMIT',
   'UNNEST', 'AS', 'AND', 'OR', 'NOT', 'ASC', 'DESC',
-  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'NULL',
-  'JOIN', 'ON', 'TRUE', 'FALSE',
+  'GROUP', 'HAVING', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'NULL',
+  'ARRAY_COUNT', 'ARRAY_SUM', 'ARRAY_AVG', 'ARRAY_MIN', 'ARRAY_MAX',
+  'JOIN', 'ON', 'TRUE', 'FALSE', 'CREATE', 'COLLECTION',
+  'INSERT', 'INTO', 'VALUE', 'UPDATE', 'SET', 'DELETE',
+  'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER', 'NATURAL',
+  'UNION', 'INTERSECT', 'EXCEPT', 'LIKE', 'ILIKE',
 ]);
 
 export function highlightSQL(sql) {
@@ -133,35 +137,83 @@ export function pipelineBar(stages) {
   }).join(colors.muted(' → '));
 }
 
-export function formatTable(rows, columns) {
+export function formatTable(rows, columns, maxWidth = Math.max(20, (process.stdout.columns || 100) - 4)) {
   if (!rows || rows.length === 0) return colors.dimText('  (no results)');
+  const displayColumns = [...(columns || [])];
+  for (const row of rows) {
+    for (const col of Object.keys(row || {})) {
+      if (!displayColumns.includes(col)) displayColumns.push(col);
+    }
+  }
+  columns = displayColumns;
 
   // Calculate column widths
   const widths = columns.map(col => {
     const headerLen = col.length;
     const maxDataLen = rows.reduce((max, row) => {
-      const val = String(row[col] ?? 'null');
+      const val = formatCell(row[col]);
       return Math.max(max, val.length);
     }, 0);
-    return Math.min(Math.max(headerLen, maxDataLen), 30);
+    return Math.max(headerLen, maxDataLen);
   });
+  const usableWidth = Math.max(12, Math.floor(maxWidth) - 2);
+  const tableWidth = () => widths.reduce((sum, width) => sum + width, 0) + (columns.length - 1) * 3;
+  const minWidth = 6;
 
-  const sep = colors.muted(widths.map(w => '─'.repeat(w + 2)).join('┬'));
-  const header = columns.map((col, i) =>
-    colors.bright(col.padEnd(widths[i]))
-  ).join(colors.muted(' │ '));
+  while (tableWidth() > usableWidth && Math.max(...widths) > minWidth) {
+    const widestIndex = widths.indexOf(Math.max(...widths));
+    widths[widestIndex]--;
+  }
 
-  const dataRows = rows.map((row, rowIdx) => {
-    const line = columns.map((col, i) => {
-      const val = String(row[col] ?? 'null').slice(0, 30);
-      return val.padEnd(widths[i]);
-    }).join(colors.muted(' │ '));
-    return rowIdx % 2 === 0 ? colors.text(line) : colors.dimText(line);
+  const headerLines = wrapRow(columns, widths);
+  const sep = colors.muted(widths.map(w => '─'.repeat(w)).join('─┼─'));
+  const header = headerLines.map(line => line.map((cell, i) =>
+    colors.bright(cell.padEnd(widths[i]))
+  ).join(colors.muted(' │ ')));
+
+  const dataRows = rows.flatMap((row, rowIdx) => {
+    const rowLines = wrapRow(columns.map(col => formatCell(row[col])), widths);
+    return rowLines.map(line => {
+      const rendered = line.map((cell, i) => cell.padEnd(widths[i])).join(colors.muted(' │ '));
+      return rowIdx % 2 === 0 ? colors.text(rendered) : colors.dimText(rendered);
+    });
   });
 
   return [
-    `  ${header}`,
+    ...header.map(line => `  ${line}`),
     `  ${sep}`,
     ...dataRows.map(r => `  ${r}`),
   ].join('\n');
+}
+
+function formatCell(value) {
+  if (value === null || value === undefined) return 'null';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function wrapRow(values, widths) {
+  const cells = values.map((value, index) => wrapCell(value, widths[index]));
+  const lineCount = Math.max(...cells.map(cell => cell.length));
+  return Array.from({ length: lineCount }, (_, lineIndex) =>
+    cells.map(cell => cell[lineIndex] || '')
+  );
+}
+
+function wrapCell(value, width) {
+  const text = String(value ?? 'null');
+  if (text.length === 0) return [''];
+  if (width <= 0 || text.length <= width) return [text];
+
+  const lines = [];
+  for (let i = 0; i < text.length; i += width) {
+    lines.push(text.slice(i, i + width));
+  }
+  return lines;
 }
