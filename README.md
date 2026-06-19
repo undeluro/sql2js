@@ -1,4 +1,4 @@
-# json-query-2-javascript
+# sql2js
 
 ## Project Topic
 
