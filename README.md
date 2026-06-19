@@ -1,19 +1,19 @@
 # json-query-2-javascript
 
-## Temat projektu
+## Project Topic
 
-`sql2js` — kompilator języka zapytań SQL-like dla danych JSON, z interaktywnym TUI oraz obsługą prostego modelu relacyjnej bazy danych zapisanej w pliku `.json`.
+`sql2js` — an SQL-like query language compiler for JSON data, with an interactive TUI and support for a simple relational database model stored in a `.json` file.
 
-## Zespół
+## Team
 
 - Dzmitry Nikitsin — dnikitin@student.agh.edu.pl
 - Niyaz Lapkouski — nlapkowski@student.agh.edu.pl
 
-## Założenia programu
+## Program Assumptions
 
-Program jest kompilatorem uproszczonego języka SQL-like dla danych zapisanych w formacie JSON. Użytkownik może wykonywać zapytania oraz modyfikacje danych przez interfejs terminalowy, jednorazowe polecenia CLI albo pliki skryptów `.s2j`.
+The program is a compiler of a simplified SQL-like language for data stored in JSON format. The user can execute queries and modify data through a terminal interface, one-time CLI commands, or `.s2j` script files.
 
-Pipeline kompilacji:
+Compilation pipeline:
 
 ```text
 SQL-like DSL
@@ -21,49 +21,49 @@ SQL-like DSL
   -> Parser ANTLR4
   -> AST Builder
   -> Semantic Analyzer
-  -> Code Generator JavaScript
+  -> JavaScript Code Generator
   -> Runtime Executor
-  -> wynik JSON albo zmodyfikowana baza danych
+  -> JSON result or modified database
 ```
 
-## Ogólne cele programu
+## General Program Goals
 
-Program umożliwia:
+The program allows:
 
-- wykonywanie zapytań `SELECT` na kolekcjach JSON,
-- tworzenie kolekcji poleceniem `CREATE COLLECTION`,
-- dodawanie rekordów poleceniem `INSERT`,
-- modyfikowanie rekordów poleceniem `UPDATE`,
-- usuwanie rekordów poleceniem `DELETE`,
-- pracę interaktywną w TUI z automatycznym zapisem zmian,
-- uruchamianie poleceń z CLI przez `-e`,
-- uruchamianie skryptów z plików `.s2j` przez `-f`.
+- executing `SELECT` queries on JSON collections,
+- creating collections using the `CREATE COLLECTION` command,
+- adding records using the `INSERT` command,
+- modifying records using the `UPDATE` command,
+- deleting records using the `DELETE` command,
+- interactive work in the TUI with automatic saving of changes,
+- running commands from the CLI using `-e`,
+- running scripts from `.s2j` files using `-f`.
 
-## Rodzaj translatora
+## Type of Translator
 
-Kompilator. Program tłumaczy wejściowy język DSL do kodu JavaScript, a następnie wykonuje wygenerowaną funkcję na danych JSON.
+Compiler. The program translates the input DSL language to JavaScript code, and then executes the generated function on JSON data.
 
-## Planowany wynik działania programu
+## Planned Program Output
 
-Wynikiem działania jest:
+The output of the program is:
 
-- tablica obiektów JSON dla zapytań `SELECT`,
-- zmodyfikowana baza danych JSON dla poleceń `CREATE`, `INSERT`, `UPDATE`, `DELETE`,
-- diagnostyka błędów z rozróżnieniem faz: `lexical`, `syntax`, `semantic`, `compiletime`, `runtime`.
+- an array of JSON objects for `SELECT` queries,
+- a modified JSON database for `CREATE`, `INSERT`, `UPDATE`, `DELETE` commands,
+- error diagnostics with phase distinction: `lexical`, `syntax`, `semantic`, `compiletime`, `runtime`.
 
-## Planowany język implementacji
+## Planned Implementation Language
 
-JavaScript ESM uruchamiany w Node.js.
+JavaScript ESM running in Node.js.
 
-## Generator parsera
+## Parser Generator
 
-Do realizacji skanera i parsera używany jest ANTLR4:
+ANTLR4 is used to implement the scanner and parser:
 
-- gramatyka: `grammar/JsonQuery.g4`,
-- runtime: pakiet npm `antlr4`,
-- wygenerowane pliki: `src/generated/`.
+- grammar: `grammar/JsonQuery.g4`,
+- runtime: `antlr4` npm package,
+- generated files: `src/generated/`.
 
-Po zmianie gramatyki należy uruchomić:
+After changing the grammar, you should run:
 
 ```bash
 npm run generate
@@ -71,21 +71,21 @@ npm run generate
 
 ---
 
-## Terminologia projektu
+## Project Terminology
 
-| Termin | Znaczenie w projekcie |
+| Term | Meaning in the project |
 |---|---|
-| Baza danych | Jeden plik `.json`, którego korzeniem jest obiekt. |
-| Kolekcja / tabela | Nazwana tablica obiektów w bazie danych, np. `"users": [...]`. |
-| Rekord / wiersz | Pojedynczy obiekt JSON w kolekcji. |
-| Pole / kolumna | Właściwość rekordu. Pola zagnieżdżone zapisuje się ścieżką, np. `profile.score`. |
-| Ścieżka | Notacja kropkowa do pól obiektu, np. `address.city`. |
-| Instrukcja | Pojedyncze polecenie DSL zakończone średnikiem. |
-| Skrypt | Plik `.s2j` zawierający jedną lub wiele instrukcji. |
-| JOIN | Łączenie rekordów dwóch kolekcji na podstawie warunku `ON`. |
-| UNNEST | Jawne rozwinięcie tablicy zagnieżdżonej w rekordzie do wielu wierszy. |
+| Database | A single `.json` file whose root is an object. |
+| Collection / table | A named array of objects in the database, e.g., `"users": [...]`. |
+| Record / row | A single JSON object in a collection. |
+| Field / column | A property of a record. Nested fields are written as a path, e.g., `profile.score`. |
+| Path | Dot notation to object fields, e.g., `address.city`. |
+| Statement | A single DSL command ending with a semicolon. |
+| Script | An `.s2j` file containing one or more statements. |
+| JOIN | Joining records of two collections based on the `ON` condition. |
+| UNNEST | Explicit expansion of a nested array in a record to multiple rows. |
 
-Preferowany format bazy danych:
+Preferred database format:
 
 ```json
 {
@@ -98,122 +98,122 @@ Preferowany format bazy danych:
 }
 ```
 
-Dla wygody nadal akceptowany jest plik, którego korzeniem jest tablica obiektów. Wtedy nazwa kolekcji jest brana z nazwy pliku, np. `users.json` jest traktowany jak baza `{ "users": [...] }`.
+For convenience, a file whose root is an array of objects is still accepted. In this case, the collection name is taken from the file name, e.g., `users.json` is treated as the database `{ "users": [...] }`.
 
 ---
 
-## Kluczowe decyzje semantyczne
+## Key Semantic Decisions
 
-| Kwestia | Decyzja |
+| Issue | Decision |
 |---|---|
-| Korzeń bazy danych | Obiekt JSON, którego pola są kolekcjami. |
-| Kolekcja | Tablica obiektów JSON. |
-| Nawigacja przez zagnieżdżone obiekty | Dozwolona bezpośrednio: `address.city`. |
-| Rozwijanie obiektu w `SELECT` | `address.*` oraz `u.address.*` rozwijają bezpośrednie pola obiektu do kolumn z prefiksem, np. `address.city`. |
-| Nawigacja przez tablice | Wymaga jawnego `UNNEST(pole) AS alias`. |
-| Agregaty grupowe | `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` operują na wierszach wyniku, z obsługą `GROUP BY`, `HAVING` i `COUNT(*)`. |
-| Funkcje tablicowe | `ARRAY_COUNT`, `ARRAY_SUM`, `ARRAY_AVG`, `ARRAY_MIN`, `ARRAY_MAX` operują na tablicach wewnątrz pojedynczego rekordu. |
-| JOIN | `INNER`, `LEFT`, `RIGHT`, `FULL` oraz `NATURAL JOIN` między kolekcjami. |
-| Wynik `SELECT *` po JOIN | Pola techniczne aliasów są ukryte; konflikty z prawej strony dostają prefiks aliasu, np. `p.id`. |
-| Operacje zbiorowe | `UNION`, `INTERSECT`, `EXCEPT` działają bez duplikatów; końcowe `ORDER BY` i `LIMIT` dotyczą całego wyniku. |
-| Dopasowanie tekstu | `LIKE` jest czuły na wielkość liter, `ILIKE` ignoruje wielkość liter; `%` i `_` są wildcardami. |
-| Wyświetlanie tabel w TUI | Zagnieżdżone obiekty i tablice są pokazywane jako pełny, zwijany tekst JSON bez skracania wielokropkiem. |
-| Mutacje w TUI | Po poprawnym `CREATE`, `INSERT`, `UPDATE`, `DELETE` zmiany są automatycznie zapisywane do aktywnej bazy. |
-| Mutacje w CLI | Domyślnie nie nadpisują pliku wejściowego; zapis do `-d` wymaga `--save`. |
-| Skrypty | Pliki `.s2j` zawierają instrukcje zakończone średnikami. |
+| Database root | A JSON object whose fields are collections. |
+| Collection | An array of JSON objects. |
+| Navigation through nested objects | Allowed directly: `address.city`. |
+| Expanding an object in `SELECT` | `address.*` and `u.address.*` expand the direct fields of the object into columns with a prefix, e.g., `address.city`. |
+| Navigation through arrays | Requires an explicit `UNNEST(field) AS alias`. |
+| Group aggregates | `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` operate on result rows, with support for `GROUP BY`, `HAVING`, and `COUNT(*)`. |
+| Array functions | `ARRAY_COUNT`, `ARRAY_SUM`, `ARRAY_AVG`, `ARRAY_MIN`, `ARRAY_MAX` operate on arrays within a single record. |
+| JOIN | `INNER`, `LEFT`, `RIGHT`, `FULL`, and `NATURAL JOIN` between collections. |
+| Result of `SELECT *` after JOIN | Technical alias fields are hidden; conflicts from the right side get an alias prefix, e.g., `p.id`. |
+| Set operations | `UNION`, `INTERSECT`, `EXCEPT` work without duplicates; final `ORDER BY` and `LIMIT` apply to the entire result. |
+| Text matching | `LIKE` is case-sensitive, `ILIKE` is case-insensitive; `%` and `_` are wildcards. |
+| Displaying tables in TUI | Nested objects and arrays are shown as full, collapsible JSON text without truncation by ellipsis. |
+| Mutations in TUI | After a valid `CREATE`, `INSERT`, `UPDATE`, `DELETE`, changes are automatically saved to the active database. |
+| Mutations in CLI | Do not overwrite the input file by default; saving to `-d` requires `--save`. |
+| Scripts | `.s2j` files contain statements ending with semicolons. |
 
 ---
 
-## Opis tokenów
+## Token Description
 
-Tokeny są podzielone na słowa kluczowe, literały, identyfikatory oraz operatory/znaki przestankowe. Słowa kluczowe są case-insensitive. Białe znaki i komentarze liniowe `--` są pomijane.
+Tokens are divided into keywords, literals, identifiers, and operators/punctuation marks. Keywords are case-insensitive. Whitespace and `--` line comments are ignored.
 
-### Słowa kluczowe
+### Keywords
 
-| Token | Wzorzec | Opis |
+| Token | Pattern | Description |
 |---|---|---|
-| `SELECT` | `[Ss][Ee][Ll][Ee][Cc][Tt]` | Projekcja danych. |
-| `FROM` | `[Ff][Rr][Oo][Mm]` | Źródłowa kolekcja. |
-| `WHERE` | `[Ww][Hh][Ee][Rr][Ee]` | Warunek filtrowania. |
-| `GROUP` | `[Gg][Rr][Oo][Uu][Pp]` | Grupowanie wyników. |
-| `HAVING` | `[Hh][Aa][Vv][Ii][Nn][Gg]` | Warunek po agregacji grup. |
-| `ORDER` | `[Oo][Rr][Dd][Ee][Rr]` | Sortowanie. |
-| `BY` | `[Bb][Yy]` | Część `ORDER BY`. |
-| `LIMIT` | `[Ll][Ii][Mm][Ii][Tt]` | Ograniczenie liczby wyników. |
-| `UNNEST` | `[Uu][Nn][Nn][Ee][Ss][Tt]` | Rozwinięcie tablicy. |
+| `SELECT` | `[Ss][Ee][Ll][Ee][Cc][Tt]` | Data projection. |
+| `FROM` | `[Ff][Rr][Oo][Mm]` | Source collection. |
+| `WHERE` | `[Ww][Hh][Ee][Rr][Ee]` | Filtering condition. |
+| `GROUP` | `[Gg][Rr][Oo][Uu][Pp]` | Grouping results. |
+| `HAVING` | `[Hh][Aa][Vv][Ii][Nn][Gg]` | Condition after group aggregation. |
+| `ORDER` | `[Oo][Rr][Dd][Ee][Rr]` | Sorting. |
+| `BY` | `[Bb][Yy]` | Part of `ORDER BY`. |
+| `LIMIT` | `[Ll][Ii][Mm][Ii][Tt]` | Limit on the number of results. |
+| `UNNEST` | `[Uu][Nn][Nn][Ee][Ss][Tt]` | Array expansion. |
 | `AS` | `[Aa][Ss]` | Alias. |
-| `AND` | `[Aa][Nn][Dd]` | Koniunkcja. |
-| `OR` | `[Oo][Rr]` | Alternatywa. |
-| `NOT` | `[Nn][Oo][Tt]` | Negacja. |
-| `ASC` | `[Aa][Ss][Cc]` | Sortowanie rosnące. |
-| `DESC` | `[Dd][Ee][Ss][Cc]` | Sortowanie malejące. |
-| `COUNT` | `[Cc][Oo][Uu][Nn][Tt]` | Liczba wierszy lub nie-nullowych wartości w grupie. |
-| `SUM` | `[Ss][Uu][Mm]` | Suma wartości w grupie. |
-| `AVG` | `[Aa][Vv][Gg]` | Średnia wartości w grupie. |
-| `MIN_F` | `[Mm][Ii][Nn]` | Minimum wartości w grupie. |
-| `MAX_F` | `[Mm][Aa][Xx]` | Maksimum wartości w grupie. |
-| `ARRAY_COUNT` | `ARRAY_COUNT` case-insensitive | Liczba elementów tablicy w pojedynczym rekordzie. |
-| `ARRAY_SUM` | `ARRAY_SUM` case-insensitive | Suma elementów tablicy w pojedynczym rekordzie. |
-| `ARRAY_AVG` | `ARRAY_AVG` case-insensitive | Średnia elementów tablicy w pojedynczym rekordzie. |
-| `ARRAY_MIN` | `ARRAY_MIN` case-insensitive | Minimum tablicy w pojedynczym rekordzie. |
-| `ARRAY_MAX` | `ARRAY_MAX` case-insensitive | Maksimum tablicy w pojedynczym rekordzie. |
-| `NULL` | `[Nn][Uu][Ll][Ll]` | Literał null. |
-| `JOIN` | `[Jj][Oo][Ii][Nn]` | Łączenie kolekcji. |
-| `ON` | `[Oo][Nn]` | Warunek JOIN. |
-| `INNER` | `[Ii][Nn][Nn][Ee][Rr]` | Jawny inner join. |
-| `LEFT`, `RIGHT`, `FULL` | case-insensitive | Zewnętrzne warianty JOIN. |
-| `OUTER` | `[Oo][Uu][Tt][Ee][Rr]` | Opcjonalne słowo w `LEFT/RIGHT/FULL OUTER JOIN`. |
-| `NATURAL` | `[Nn][Aa][Tt][Uu][Rr][Aa][Ll]` | JOIN po wspólnych polach. |
-| `UNION` | `[Uu][Nn][Ii][Oo][Nn]` | Suma zbiorów wyników. |
-| `INTERSECT` | `[Ii][Nn][Tt][Ee][Rr][Ss][Ee][Cc][Tt]` | Część wspólna wyników. |
-| `EXCEPT` | `[Ee][Xx][Cc][Ee][Pp][Tt]` | Różnica wyników. |
-| `LIKE` | `[Ll][Ii][Kk][Ee]` | Dopasowanie wzorca czułe na wielkość liter. |
-| `ILIKE` | `[Ii][Ll][Ii][Kk][Ee]` | Dopasowanie wzorca ignorujące wielkość liter. |
-| `CREATE` | `[Cc][Rr][Ee][Aa][Tt][Ee]` | Tworzenie kolekcji. |
-| `COLLECTION` | `[Cc][Oo][Ll][Ll][Ee][Cc][Tt][Ii][Oo][Nn]` | Słowo kluczowe kolekcji. |
-| `INSERT` | `[Ii][Nn][Ss][Ee][Rr][Tt]` | Dodanie rekordu. |
-| `INTO` | `[Ii][Nn][Tt][Oo]` | Docelowa kolekcja INSERT. |
-| `VALUE` | `[Vv][Aa][Ll][Uu][Ee]` | Wartość rekordu INSERT. |
-| `UPDATE` | `[Uu][Pp][Dd][Aa][Tt][Ee]` | Aktualizacja rekordów. |
-| `SET` | `[Ss][Ee][Tt]` | Lista przypisań UPDATE. |
-| `DELETE` | `[Dd][Ee][Ll][Ee][Tt][Ee]` | Usunięcie rekordów. |
+| `AND` | `[Aa][Nn][Dd]` | Conjunction. |
+| `OR` | `[Oo][Rr]` | Disjunction. |
+| `NOT` | `[Nn][Oo][Tt]` | Negation. |
+| `ASC` | `[Aa][Ss][Cc]` | Ascending sort. |
+| `DESC` | `[Dd][Ee][Ss][Cc]` | Descending sort. |
+| `COUNT` | `[Cc][Oo][Uu][Nn][Tt]` | Number of rows or non-null values in a group. |
+| `SUM` | `[Ss][Uu][Mm]` | Sum of values in a group. |
+| `AVG` | `[Aa][Vv][Gg]` | Average of values in a group. |
+| `MIN_F` | `[Mm][Ii][Nn]` | Minimum of values in a group. |
+| `MAX_F` | `[Mm][Aa][Xx]` | Maximum of values in a group. |
+| `ARRAY_COUNT` | `ARRAY_COUNT` case-insensitive | Number of array elements in a single record. |
+| `ARRAY_SUM` | `ARRAY_SUM` case-insensitive | Sum of array elements in a single record. |
+| `ARRAY_AVG` | `ARRAY_AVG` case-insensitive | Average of array elements in a single record. |
+| `ARRAY_MIN` | `ARRAY_MIN` case-insensitive | Minimum of an array in a single record. |
+| `ARRAY_MAX` | `ARRAY_MAX` case-insensitive | Maximum of an array in a single record. |
+| `NULL` | `[Nn][Uu][Ll][Ll]` | Null literal. |
+| `JOIN` | `[Jj][Oo][Ii][Nn]` | Joining collections. |
+| `ON` | `[Oo][Nn]` | JOIN condition. |
+| `INNER` | `[Ii][Nn][Nn][Ee][Rr]` | Explicit inner join. |
+| `LEFT`, `RIGHT`, `FULL` | case-insensitive | Outer JOIN variants. |
+| `OUTER` | `[Oo][Uu][Tt][Ee][Rr]` | Optional word in `LEFT/RIGHT/FULL OUTER JOIN`. |
+| `NATURAL` | `[Nn][Aa][Tt][Uu][Rr][Aa][Ll]` | JOIN on common fields. |
+| `UNION` | `[Uu][Nn][Ii][Oo][Nn]` | Union of result sets. |
+| `INTERSECT` | `[Ii][Nn][Tt][Ee][Rr][Ss][Ee][Cc][Tt]` | Intersection of results. |
+| `EXCEPT` | `[Ee][Xx][Cc][Ee][Pp][Tt]` | Difference of results. |
+| `LIKE` | `[Ll][Ii][Kk][Ee]` | Case-sensitive pattern matching. |
+| `ILIKE` | `[Ii][Ll][Ii][Kk][Ee]` | Case-insensitive pattern matching. |
+| `CREATE` | `[Cc][Rr][Ee][Aa][Tt][Ee]` | Creating a collection. |
+| `COLLECTION` | `[Cc][Oo][Ll][Ll][Ee][Cc][Tt][Ii][Oo][Nn]` | Collection keyword. |
+| `INSERT` | `[Ii][Nn][Ss][Ee][Rr][Tt]` | Adding a record. |
+| `INTO` | `[Ii][Nn][Tt][Oo]` | Target collection of INSERT. |
+| `VALUE` | `[Vv][Aa][Ll][Uu][Ee]` | Value of the INSERT record. |
+| `UPDATE` | `[Uu][Pp][Dd][Aa][Tt][Ee]` | Updating records. |
+| `SET` | `[Ss][Ee][Tt]` | List of UPDATE assignments. |
+| `DELETE` | `[Dd][Ee][Ll][Ee][Tt][Ee]` | Deleting records. |
 
-### Literały
+### Literals
 
-| Token | Wzorzec | Przykłady | Opis |
+| Token | Pattern | Examples | Description |
 |---|---|---|---|
-| `BOOLEAN_LIT` | `true\|false` case-insensitive | `true`, `False` | Wartość logiczna. |
-| `INTEGER_LIT` | `[0-9]+` | `0`, `42` | Liczba całkowita. |
-| `FLOAT_LIT` | `[0-9]+'.'[0-9]*` lub `'.'[0-9]+` | `3.14`, `.5` | Liczba zmiennoprzecinkowa. |
-| `STRING_LIT` | `"..."` albo `'...'` | `'Ala'`, `"Ola"` | Łańcuch znaków. |
+| `BOOLEAN_LIT` | `true\|false` case-insensitive | `true`, `False` | Boolean value. |
+| `INTEGER_LIT` | `[0-9]+` | `0`, `42` | Integer. |
+| `FLOAT_LIT` | `[0-9]+'.'[0-9]*` or `'.'[0-9]+` | `3.14`, `.5` | Floating-point number. |
+| `STRING_LIT` | `"..."` or `'...'` | `'Ala'`, `"Ola"` | String of characters. |
 
-### Identyfikatory
+### Identifiers
 
-| Token | Wzorzec | Opis |
+| Token | Pattern | Description |
 |---|---|---|
-| `IDENTIFIER` | `[a-zA-Z_][a-zA-Z_0-9]*` | Nazwa kolekcji, pola lub aliasu. |
+| `IDENTIFIER` | `[a-zA-Z_][a-zA-Z_0-9]*` | Name of a collection, field, or alias. |
 
-### Operatory i znaki przestankowe
+### Operators and Punctuation Marks
 
-| Token | Leksem | Opis |
+| Token | Lexeme | Description |
 |---|---|---|
-| `EQ` | `=` | Równość albo przypisanie. |
-| `NEQ` | `!=` | Nierówność. |
-| `LT`, `GT`, `LEQ`, `GEQ` | `<`, `>`, `<=`, `>=` | Porównania. |
-| `PLUS`, `MINUS`, `STAR`, `SLASH` | `+`, `-`, `*`, `/` | Operatory arytmetyczne. |
-| `LPAREN`, `RPAREN` | `(`, `)` | Nawiasy okrągłe. |
-| `LBRACE`, `RBRACE` | `{`, `}` | Literał obiektu. |
-| `LBRACK`, `RBRACK` | `[`, `]` | Literał tablicy. |
+| `EQ` | `=` | Equality or assignment. |
+| `NEQ` | `!=` | Inequality. |
+| `LT`, `GT`, `LEQ`, `GEQ` | `<`, `>`, `<=`, `>=` | Comparisons. |
+| `PLUS`, `MINUS`, `STAR`, `SLASH` | `+`, `-`, `*`, `/` | Arithmetic operators. |
+| `LPAREN`, `RPAREN` | `(`, `)` | Parentheses. |
+| `LBRACE`, `RBRACE` | `{`, `}` | Object literal. |
+| `LBRACK`, `RBRACK` | `[`, `]` | Array literal. |
 | `COMMA` | `,` | Separator. |
-| `DOT` | `.` | Separator ścieżki. |
-| `COLON` | `:` | Separator klucza i wartości w obiekcie. |
-| `SEMICOLON` | `;` | Koniec instrukcji. |
+| `DOT` | `.` | Path separator. |
+| `COLON` | `:` | Key-value separator in an object. |
+| `SEMICOLON` | `;` | End of statement. |
 
 ---
 
-## Gramatyka w notacji ANTLR4
+## Grammar in ANTLR4 Notation
 
-Pełny plik gramatyki znajduje się w `grammar/JsonQuery.g4`. Poniżej najważniejsza część gramatyki bez akcji semantycznych.
+The full grammar file is located in `grammar/JsonQuery.g4`. Below is the most important part of the grammar without semantic actions.
 
 ```antlr
 program
@@ -397,71 +397,71 @@ literal
     ;
 ```
 
-Priorytety operatorów w regule `expr` są zgodne z mechanizmem lewostronnej rekurencji ANTLR4: wcześniejsze alternatywy mają wyższy priorytet.
+Operator priorities in the `expr` rule follow the ANTLR4 left-recursion mechanism: earlier alternatives have higher priority.
 
 ---
-## Użyte technologie i pakiety zewnętrzne
+## Technologies and External Packages Used
 
-| Komponent | Technologia |
+| Component | Technology |
 |---|---|
-| Generator parsera | ANTLR4 |
-| Runtime parsera | `antlr4` |
-| Język implementacji | JavaScript ESM |
+| Parser generator | ANTLR4 |
+| Parser runtime | `antlr4` |
+| Implementation language | JavaScript ESM |
 | Runtime | Node.js |
 | TUI | Ink + React |
-| Kolory terminala | chalk |
-| Wybór pliku w TUI | ink-select-input |
-| Duży tytuł ASCII | figlet |
+| Terminal colors | chalk |
+| File selection in TUI | ink-select-input |
+| Large ASCII title | figlet |
 
 ---
-## Krótka instrukcja obsługi
+## Short User Manual
 
-### Wymagania
+### Requirements
 
 - Node.js >= 18
-- Java do generowania parsera ANTLR4
+- Java to generate the ANTLR4 parser
 
-### Instalacja
+### Installation
 
 ```bash
 npm install
 npm run generate
 ```
 
-### Tryb interaktywny TUI
+### Interactive TUI Mode
 
 ```bash
 node src/index.js
 node src/index.js -d data/users.json
 ```
 
-W TUI można wybrać istniejącą bazę lub utworzyć nową. Po poprawnych instrukcjach `CREATE`, `INSERT`, `UPDATE`, `DELETE` zmiany są automatycznie zapisywane do aktywnego pliku `.json`.
+In the TUI, you can select an existing database or create a new one. After valid `CREATE`, `INSERT`, `UPDATE`, `DELETE` statements, changes are automatically saved to the active `.json` file.
 
-Skróty w TUI:
+Shortcuts in the TUI:
 
-- `Enter` — wykonanie instrukcji,
-- `Shift+Enter` albo `Ctrl+J` — wstawienie nowej linii w edytorze zapytania,
-- `Left` / `Right` / `Up` / `Down` — przesuwanie kursora w aktualnej instrukcji wieloliniowej,
-- `Up` / `Down` na pierwszej albo ostatniej linii — historia instrukcji,
-- `Ctrl+O` — wybór lub zmiana aktywnej bazy danych,
-- `Ctrl+D` — pokazanie albo ukrycie wygenerowanego kodu JavaScript,
-- `Ctrl+Q` albo `Ctrl+C` — wyjście.
+- `Enter` — execute the statement,
+- `Shift+Enter` or `Ctrl+J` — insert a new line in the query editor,
+- `Left` / `Right` / `Up` / `Down` — move the cursor in the current multi-line statement,
+- `Up` / `Down` on the first or last line — statement history,
+- `Ctrl+O` — select or change the active database,
+- `Ctrl+D` — show or hide the generated JavaScript code,
+- `Ctrl+Q` or `Ctrl+C` — quit.
 
-### Tryb jednorazowy CLI
+### One-time CLI Mode
 
 ```bash
 node src/index.js -e "SELECT name, age FROM users WHERE age > 18;" -d data/users.json
 ```
 
-Mutacje z CLI domyślnie nie nadpisują pliku wejściowego. Aby zapisać wynik z powrotem do bazy przekazanej przez `-d`, należy dodać `--save`:
+Mutations from the CLI do not overwrite the input file by default. To save the result back to the database passed via `-d`, you need to add `--save`:
 
 ```bash
 node src/index.js -e "INSERT INTO users VALUE { id: 99, name: 'Ola' };" -d db.json --save
 ```
 
-### Uruchamianie skryptów `.s2j`
+### Running `.s2j` Scripts
 
-Plik `commands.s2j`:
+`commands.s2j` file:
 
 ```sql
 CREATE COLLECTION people FROM [{ id: 1, name: 'Ala', age: 20 }];
@@ -469,20 +469,20 @@ INSERT INTO people VALUE { id: 2, name: 'Ola', age: 21 };
 SELECT name, age FROM people ORDER BY id ASC;
 ```
 
-Uruchomienie:
+Execution:
 
 ```bash
 node src/index.js -f commands.s2j -d db.json
 node src/index.js -f commands.s2j -d db.json --save
 ```
 
-### Przykład użycia
+### Example Usage
 
 ```bash
 node src/index.js -e "CREATE COLLECTION people FROM [{ id: 1, name: 'Ala', age: 20 }]; INSERT INTO people VALUE { id: 2, name: 'Ola', age: 21 }; SELECT name, age FROM people ORDER BY id ASC;" -d people.json --save
 ```
 
-Wynik na standardowym wyjściu:
+Result on standard output:
 
 ```json
 [
@@ -497,13 +497,13 @@ Wynik na standardowym wyjściu:
 ]
 ```
 
-### Zapisywanie wyników
+### Saving Results
 
 ```bash
-# Zapis wyniku SELECT
+# Save SELECT result
 node src/index.js -e "SELECT name FROM users;" -d db.json -o out/result.json
 
-# Zapis całej zmodyfikowanej bazy do osobnego pliku
+# Save the entire modified database to a separate file
 node src/index.js -f commands.s2j -d db.json --write-dataset out/db-after.json
 ```
 
@@ -514,7 +514,7 @@ node src/index.js -e "SELECT name FROM users LIMIT 1;" -d data/users.json --debu
 node src/index.js -e "SELECT name FROM users LIMIT 1;" -d data/users.json --ex-debug
 ```
 
-### Pomoc
+### Help
 
 ```bash
 node src/index.js --help
@@ -522,62 +522,62 @@ node src/index.js --help
 
 ---
 
-## Przykłady diagnostyki błędów
+## Examples of Error Diagnostics
 
 ```bash
-# Błąd leksykalny
+# Lexical error
 node src/index.js -e "SELECT name FROM users WHERE age > @;" -d data/users.json
 
-# Błąd leksykalny: niedozwolony znak w wyrażeniu
+# Lexical error: illegal character in expression
 node src/index.js -e "SELECT name FROM users WHERE age # 18;" -d data/users.json
 
-# Błąd składniowy
+# Syntax error
 node src/index.js -e "SELECT name users;" -d data/users.json
 
-# Błąd składniowy: brak średnika w pliku skryptu
+# Syntax error: missing semicolon in script file
 node src/index.js -f broken-script.s2j -d db.json
 
-# Błąd semantyczny
+# Semantic error
 node src/index.js -e "SELECT missingField FROM users;" -d data/users.json
 
-# Błąd semantyczny: nieistniejąca kolekcja
+# Semantic error: non-existent collection
 node src/index.js -e "SELECT name FROM missing;" -d data/users.json
 
-# Błąd semantyczny: INSERT do nieistniejącej kolekcji
+# Semantic error: INSERT into non-existent collection
 node src/index.js -e "INSERT INTO missing VALUE { id: 1 };" -d data/users.json
 
-# Błąd semantyczny: UPDATE nieistniejącego pola przy znanym schemacie
+# Semantic error: UPDATE of a non-existent field with known schema
 node src/index.js -e "UPDATE users SET missingField = 1 WHERE id = 1;" -d data/users.json
 
-# Błąd semantyczny: UNNEST wymaga tablicy
+# Semantic error: UNNEST requires an array
 node src/index.js -e "SELECT name FROM users UNNEST(age) AS item;" -d data/users.json
 
-# Błąd semantyczny: funkcja ARRAY_* wymaga tablicy
+# Semantic error: ARRAY_* function requires an array
 node src/index.js -e "SELECT ARRAY_SUM(age) FROM users;" -d data/users.json
 
-# Błąd semantyczny: agregat grupowy nie może być użyty w WHERE
+# Semantic error: group aggregate cannot be used in WHERE
 node src/index.js -e "SELECT name FROM users WHERE COUNT(*) > 1;" -d data/users.json
 
-# Błąd semantyczny: zwykłe pole w SELECT musi wystąpić w GROUP BY
+# Semantic error: regular field in SELECT must appear in GROUP BY
 node src/index.js -e "SELECT address.city, name, COUNT(*) FROM users GROUP BY address.city;" -d data/users.json
 
-# Błąd semantyczny: JOIN wymaga warunku ON, jeśli nie jest NATURAL JOIN
+# Semantic error: JOIN requires an ON condition if not a NATURAL JOIN
 node src/index.js -e "SELECT * FROM users JOIN orders;" -d data/users.json -j data/orders.json
 
-# Błąd semantyczny: NATURAL JOIN bez wspólnych pól najwyższego poziomu
+# Semantic error: NATURAL JOIN without common top-level fields
 node src/index.js -e "SELECT * FROM lefts NATURAL JOIN unrelated;" -d natural.json
 
-# Błąd runtime
+# Runtime error
 node src/index.js -e "SELECT name FROM users;" -d data
 
-# Błąd runtime: niepoprawny JSON w pliku bazy
+# Runtime error: invalid JSON in the database file
 node src/index.js -e "SELECT name FROM users;" -d broken.json
 
-# Błąd argumentów CLI: -e i -f są wzajemnie wykluczające
+# CLI arguments error: -e and -f are mutually exclusive
 node src/index.js -e "SELECT * FROM users;" -f commands.s2j -d data/users.json
 ```
 
-Przykładowy format błędu:
+Example error format:
 
 ```text
 [syntax] at 1:12: missing FROM at 'users'
@@ -587,73 +587,73 @@ Przykładowy format błędu:
   offending text: "users"
 ```
 
-Rozróżnienie faz błędów pomaga wskazać, gdzie zatrzymał się pipeline:
+The distinction between error phases helps pinpoint where the pipeline stopped:
 
-| Faza | Co oznacza | Przykład |
+| Phase | What it means | Example |
 |---|---|---|
-| `lexical` | Lexer nie potrafi rozpoznać znaku lub tokenu. | `@`, `#` w wyrażeniu. |
-| `syntax` | Parser dostał poprawne tokeny, ale w złej kolejności. | `SELECT name users;` |
-| `semantic` | Zapytanie ma poprawną składnię, ale nie zgadza się ze schematem lub regułami języka. | Nieznana kolekcja, zły `UNNEST`, brak `ON` w `JOIN`. |
-| `compiletime` | Błąd podczas budowy AST albo generowania JavaScriptu. | Nieobsłużony typ węzła AST. |
-| `runtime` | Kod został wygenerowany, ale nie udało się załadować lub przetworzyć danych. | Katalog zamiast pliku `.json`, uszkodzony JSON. |
+| `lexical` | Lexer cannot recognize a character or token. | `@`, `#` in an expression. |
+| `syntax` | Parser received correct tokens but in the wrong order. | `SELECT name users;` |
+| `semantic` | Query has correct syntax but violates the schema or language rules. | Unknown collection, bad `UNNEST`, missing `ON` in `JOIN`. |
+| `compiletime` | Error during AST building or JavaScript generation. | Unhandled AST node type. |
+| `runtime` | Code was generated, but data loading or processing failed. | Directory instead of a `.json` file, broken JSON. |
 
 ---
-## Wspierane instrukcje — przykłady
+## Supported Statements — Examples
 
 ```sql
--- Utworzenie kolekcji
+-- Collection creation
 CREATE COLLECTION people FROM [
   { id: 1, name: 'Ala', age: 20 },
   { id: 2, name: 'Ola', age: 21 }
 ];
 
--- Dodanie rekordu
+-- Adding a record
 INSERT INTO people VALUE { id: 3, name: 'Jan', age: 17 };
 
--- Aktualizacja rekordów
+-- Updating records
 UPDATE people
 SET age = age + 1
 WHERE name = 'Ala';
 
--- Usunięcie rekordów
+-- Deleting records
 DELETE FROM people
 WHERE age < 18;
 
--- Prosty filtr z zagnieżdżoną ścieżką
+-- Simple filter with a nested path
 SELECT name, address.city FROM users WHERE age > 18 ORDER BY name ASC LIMIT 10;
 
--- Płytkie rozwinięcie pól obiektu address do kolumn address.city, address.street itd.
+-- Shallow expansion of address object fields into columns address.city, address.street, etc.
 SELECT name, address.* FROM users;
 
--- Rozwinięcie tablicy przez UNNEST
+-- Array expansion via UNNEST
 SELECT name, tag FROM users UNNEST(tags) AS tag WHERE tag = 'admin';
 
--- Funkcja tablicowa na tablicy wewnątrz rekordu
+-- Array function on an array inside a record
 SELECT name, ARRAY_COUNT(orders) FROM customers WHERE ARRAY_COUNT(orders) > 3;
 
--- Agregat grupowy po wierszach
+-- Row-based group aggregate
 SELECT address.city, COUNT(*), AVG(age)
 FROM users
 GROUP BY address.city
 HAVING COUNT(*) > 1;
 
--- JOIN dwóch kolekcji
+-- JOIN of two collections
 SELECT u.name, o.product, o.total
 FROM users AS u
 JOIN orders AS o ON u.id = o.userId
 WHERE o.total > 100
 ORDER BY o.total DESC;
 
--- LEFT JOIN zachowuje rekordy z lewej kolekcji bez dopasowania
+-- LEFT JOIN keeps records from the left collection without a match
 SELECT *
 FROM users AS u
 LEFT JOIN orders AS o ON u.id = o.userId;
 
--- NATURAL JOIN dopasowuje po wspólnych polach najwyższego poziomu
+-- NATURAL JOIN matches on common top-level fields
 SELECT *
 FROM lefts NATURAL JOIN rights;
 
--- Operacje zbiorowe są domyślnie bez duplikatów
+-- Set operations are without duplicates by default
 SELECT name FROM users
 UNION
 SELECT name FROM customers
@@ -667,114 +667,114 @@ SELECT name FROM users WHERE email ILIKE '%@EXAMPLE.COM';
 
 ---
 
-## Rozszerzone przykłady użycia
+## Extended Usage Examples
 
-Poniższe przykłady pokazują typowe scenariusze testowania kompilatora i runtime'u. Zapytania można uruchamiać w TUI albo przez `-e`, np.:
+The following examples show typical scenarios for testing the compiler and runtime. Queries can be run in the TUI or via `-e`, e.g.:
 
 ```bash
 node src/index.js -e "SELECT name FROM users LIMIT 3;" -d data/users.json
 ```
 
-### Filtrowanie, sortowanie i aliasy
+### Filtering, Sorting, and Aliases
 
 ```sql
--- Projekcja z aliasami kolumn
+-- Projection with column aliases
 SELECT name AS userName, age AS userAge
 FROM users
 WHERE age >= 18
 ORDER BY age DESC
 LIMIT 5;
 
--- Warunek z AND, OR, NOT i nawiasami
+-- Condition with AND, OR, NOT and parentheses
 SELECT name, age, profile.score
 FROM users
 WHERE (age > 25 AND profile.active = true) OR NOT address.city = 'Warszawa'
 ORDER BY profile.score DESC;
 
--- Porównanie tekstu czułe i nieczułe na wielkość liter
+-- Case-sensitive and case-insensitive text comparison
 SELECT name FROM users WHERE name LIKE 'Ali%';
 SELECT email FROM users WHERE email ILIKE '%@EXAMPLE.COM';
 SELECT name FROM users WHERE name NOT ILIKE 'ewa%';
 ```
 
-### Pola zagnieżdżone, tablice i agregaty
+### Nested Fields, Arrays, and Aggregates
 
 ```sql
--- Bezpośredni dostęp do pól obiektów
+-- Direct access to object fields
 SELECT name, address.city, profile.active
 FROM users
 WHERE profile.score >= 80;
 
--- Rozwinięcie tablicy na wiele wierszy
+-- Array expansion into multiple rows
 SELECT name, tag
 FROM users
 UNNEST(tags) AS tag
 WHERE tag = 'developer';
 
--- Funkcje tablicowe na tablicach wewnątrz rekordu
+-- Array functions on arrays inside a record
 SELECT name, ARRAY_COUNT(orders)
 FROM users
 WHERE ARRAY_COUNT(orders) > 2;
 
--- Funkcje tablicowe na polu obiektu w tablicy
+-- Array functions on an object field within an array
 SELECT name, ARRAY_SUM(orders.total), ARRAY_AVG(orders.total), ARRAY_MIN(orders.total), ARRAY_MAX(orders.total)
 FROM users
 ORDER BY name ASC;
 
--- Agregaty grupowe po wierszach
+-- Row-based group aggregates
 SELECT address.city, COUNT(*), SUM(age), AVG(age), MIN(age), MAX(age)
 FROM users
 GROUP BY address.city
 HAVING COUNT(*) > 1
 ORDER BY address.city ASC;
 
--- Łączenie obu poziomów: najpierw suma tablicy w rekordzie, potem suma po grupie
+-- Combining both levels: first sum of array in a record, then sum by group
 SELECT address.city, SUM(ARRAY_SUM(orders.total))
 FROM users
 GROUP BY address.city;
 
--- COUNT(*) liczy wszystkie wiersze po filtrze WHERE
+-- COUNT(*) counts all rows after WHERE filter
 SELECT COUNT(*)
 FROM users
 WHERE age >= 18;
 
--- COUNT(pole) liczy tylko wiersze, w których pole nie jest null / missing
+-- COUNT(field) only counts rows where the field is not null / missing
 SELECT COUNT(email), COUNT(profile.score)
 FROM users;
 
--- SUM / AVG / MIN / MAX bez GROUP BY zwracają jeden wiersz dla całej kolekcji
+-- SUM / AVG / MIN / MAX without GROUP BY return one row for the entire collection
 SELECT COUNT(*), SUM(age), AVG(age), MIN(age), MAX(age)
 FROM users;
 
--- Grupowanie po jednym polu zagnieżdżonym
+-- Grouping by a single nested field
 SELECT address.city, COUNT(*), AVG(age)
 FROM users
 GROUP BY address.city;
 
--- Grupowanie po kilku kluczach
+-- Grouping by multiple keys
 SELECT address.city, profile.active, COUNT(*), MIN(age), MAX(age)
 FROM users
 GROUP BY address.city, profile.active
 ORDER BY address.city ASC;
 
--- HAVING filtruje już policzone grupy, a nie pojedyncze rekordy
+-- HAVING filters already aggregated groups, not individual records
 SELECT address.city, COUNT(*), AVG(age)
 FROM users
 GROUP BY address.city
 HAVING COUNT(*) >= 2 AND AVG(age) > 25;
 
--- COUNT(*) można łączyć z COUNT(pole), żeby wykryć brakujące wartości
+-- COUNT(*) can be combined with COUNT(field) to detect missing values
 SELECT address.city, COUNT(*), COUNT(email)
 FROM users
 GROUP BY address.city
 HAVING COUNT(*) > COUNT(email);
 
--- ARRAY_COUNT działa na tablicy w pojedynczym rekordzie
+-- ARRAY_COUNT works on an array within a single record
 SELECT name, ARRAY_COUNT(tags), ARRAY_COUNT(orders)
 FROM users
 WHERE ARRAY_COUNT(tags) > 0;
 
--- ARRAY_SUM / ARRAY_AVG / ARRAY_MIN / ARRAY_MAX na tablicy liczb
+-- ARRAY_SUM / ARRAY_AVG / ARRAY_MIN / ARRAY_MAX on an array of numbers
 CREATE COLLECTION metrics FROM [
   { id: 1, scores: [10, 20, 30] },
   { id: 2, scores: [5, 15] },
@@ -784,7 +784,7 @@ CREATE COLLECTION metrics FROM [
 SELECT id, ARRAY_SUM(scores), ARRAY_AVG(scores), ARRAY_MIN(scores), ARRAY_MAX(scores)
 FROM metrics;
 
--- ARRAY_* na polu obiektu w tablicy, np. orders.total
+-- ARRAY_* on an object field within an array, e.g., orders.total
 SELECT name,
        ARRAY_SUM(orders.total),
        ARRAY_AVG(orders.total),
@@ -792,7 +792,7 @@ SELECT name,
        ARRAY_MAX(orders.total)
 FROM users;
 
--- Agregacja grupowa po wartościach policzonych z tablic w rekordach
+-- Group aggregation over values calculated from arrays in records
 SELECT address.city,
        COUNT(*),
        SUM(ARRAY_SUM(orders.total)),
@@ -802,14 +802,14 @@ FROM users
 GROUP BY address.city
 HAVING SUM(ARRAY_SUM(orders.total)) > 100;
 
--- JOIN + agregacja: suma zamówień i liczba zamówień na użytkownika
+-- JOIN + aggregation: sum of orders and number of orders per user
 SELECT u.name, COUNT(*), SUM(o.total), AVG(o.total), MIN(o.total), MAX(o.total)
 FROM users AS u
 JOIN orders AS o ON u.id = o.userId
 GROUP BY u.name
 HAVING SUM(o.total) > 100;
 
--- UNNEST + agregacja: najczęściej występujące tagi
+-- UNNEST + aggregation: most frequently occurring tags
 SELECT tag, COUNT(*)
 FROM users
 UNNEST(tags) AS tag
@@ -817,102 +817,102 @@ GROUP BY tag
 HAVING COUNT(*) > 1
 ORDER BY tag ASC;
 
--- Niepoprawne: agregaty grupowe nie działają w WHERE, do tego służy HAVING
+-- Incorrect: group aggregates do not work in WHERE, HAVING is for that
 SELECT address.city, COUNT(*)
 FROM users
 WHERE COUNT(*) > 1
 GROUP BY address.city;
 
--- Niepoprawne: pole poza agregatem musi być w GROUP BY
+-- Incorrect: a field outside an aggregate must be in GROUP BY
 SELECT address.city, name, COUNT(*)
 FROM users
 GROUP BY address.city;
 
--- Niepoprawne: ARRAY_SUM wymaga tablicy, nie zwykłej liczby
+-- Incorrect: ARRAY_SUM requires an array, not a regular number
 SELECT ARRAY_SUM(age)
 FROM users;
 ```
 
-### Mutacje danych
+### Data Mutations
 
 ```sql
--- Utworzenie nowej kolekcji
+-- Creating a new collection
 CREATE COLLECTION tasks FROM [
   { id: 1, title: 'Parser', done: false },
   { id: 2, title: 'Codegen', done: false }
 ];
 
--- Dodanie rekordu
+-- Adding a record
 INSERT INTO tasks VALUE { id: 3, title: 'Tests', done: false };
 
--- Aktualizacja jednego lub wielu rekordów
+-- Updating one or multiple records
 UPDATE tasks
 SET done = true
 WHERE title = 'Parser';
 
--- Aktualizacja pola zagnieżdżonego
+-- Updating a nested field
 UPDATE users
 SET profile.score = profile.score + 1
 WHERE profile.active = true;
 
--- Usunięcie rekordów spełniających warunek
+-- Deleting records that match a condition
 DELETE FROM tasks
 WHERE done = true;
 ```
 
-W TUI mutacje zapisują się automatycznie do aktywnej bazy. W trybie CLI trzeba dodać `--save`, jeśli wynik ma nadpisać plik z `-d`:
+In the TUI, mutations are automatically saved to the active database. In CLI mode, `--save` must be added if the result is to overwrite the file from `-d`:
 
 ```bash
 node src/index.js -e "INSERT INTO users VALUE { id: 99, name: 'Test', age: 20 };" -d data/users.json --save
 ```
 
-### JOIN różnych typów
+### JOIN of Different Types
 
-Do przykładów z osobnym plikiem zamówień można użyć:
+For examples with a separate orders file, you can use:
 
 ```bash
 node src/index.js -e "SELECT u.name, o.product FROM users AS u JOIN orders AS o ON u.id = o.userId;" -d data/users.json -j data/orders.json
 ```
 
 ```sql
--- Domyślny JOIN działa jak INNER JOIN
+-- Default JOIN acts like INNER JOIN
 SELECT u.name, o.product, o.total
 FROM users AS u
 JOIN orders AS o ON u.id = o.userId;
 
--- Jawny INNER JOIN
+-- Explicit INNER JOIN
 SELECT u.name, o.product
 FROM users AS u
 INNER JOIN orders AS o ON u.id = o.userId
 WHERE o.total > 1000;
 
--- LEFT JOIN zachowuje wszystkich użytkowników z lewej strony
+-- LEFT JOIN keeps all users from the left side
 SELECT u.name, o.product
 FROM users AS u
 LEFT JOIN orders AS o ON u.id = o.userId;
 
--- RIGHT JOIN zachowuje wszystkie rekordy z prawej strony
+-- RIGHT JOIN keeps all records from the right side
 SELECT u.name, o.product
 FROM users AS u
 RIGHT JOIN orders AS o ON u.id = o.userId;
 
--- FULL JOIN zachowuje niedopasowane rekordy z obu stron
+-- FULL JOIN keeps unmatched records from both sides
 SELECT u.name, o.product
 FROM users AS u
 FULL JOIN orders AS o ON u.id = o.userId;
 
--- SELECT * po JOIN ukrywa pola techniczne aliasów
--- Konflikty nazw z prawej strony dostają prefiks aliasu, np. o.id
+-- SELECT * after JOIN hides technical alias fields
+-- Name conflicts from the right side get an alias prefix, e.g., o.id
 SELECT *
 FROM users AS u
 LEFT OUTER JOIN orders AS o ON u.id = o.userId;
 
--- Pola z prawej strony można pisać przez alias
+-- Fields from the right side can be accessed via alias
 SELECT u.name, o.status, o.total
 FROM users AS u
 JOIN orders AS o ON u.id = o.userId;
 
--- Unikalne, niekonfliktujące pola z prawej strony mogą być użyte bez aliasu
+-- Unique, non-conflicting fields from the right side can be used without an alias
 SELECT name, product, total
 FROM users AS u
 JOIN orders AS o ON u.id = o.userId;
@@ -920,7 +920,7 @@ JOIN orders AS o ON u.id = o.userId;
 
 ### NATURAL JOIN
 
-`NATURAL JOIN` dopasowuje rekordy po wspólnych polach najwyższego poziomu. Przykładowa baza:
+`NATURAL JOIN` matches records based on common top-level fields. Example database:
 
 ```json
 {
@@ -936,11 +936,11 @@ JOIN orders AS o ON u.id = o.userId;
 ```
 
 ```sql
--- Dopasowanie po wspólnych polach id oraz code
+-- Match on common id and code fields
 SELECT *
 FROM lefts NATURAL JOIN rights;
 
--- Warianty zewnętrzne też są obsługiwane
+-- Outer variants are also supported
 SELECT leftValue, rightValue
 FROM lefts NATURAL LEFT JOIN rights;
 
@@ -948,38 +948,38 @@ SELECT leftValue, rightValue
 FROM lefts NATURAL FULL JOIN rights;
 ```
 
-### Operacje zbiorowe i unikalność wyników
+### Set Operations and Result Uniqueness
 
-Projekt nie ma osobnego słowa kluczowego `UNIQUE`. Operacje `UNION`, `INTERSECT` i `EXCEPT` działają jak operacje zbiorowe, czyli usuwają duplikaty wierszy na podstawie wartości JSON.
+The project does not have a separate `UNIQUE` keyword. Operations `UNION`, `INTERSECT`, and `EXCEPT` act as set operations, meaning they remove duplicate rows based on JSON values.
 
 ```sql
--- UNION: suma wyników bez duplikatów
+-- UNION: sum of results without duplicates
 SELECT name FROM users
 UNION
 SELECT name FROM customers
 ORDER BY name;
 
--- INTERSECT: tylko wspólne wiersze
+-- INTERSECT: only common rows
 SELECT name FROM users
 INTERSECT
 SELECT name FROM customers;
 
--- EXCEPT: wiersze z lewej strony, których nie ma po prawej
+-- EXCEPT: rows from the left side that are not on the right
 SELECT name FROM users
 EXCEPT
 SELECT name FROM customers
 ORDER BY name
 LIMIT 10;
 
--- Duplikaty są usuwane dla całych obiektów wynikowych
+-- Duplicates are removed for entire result objects
 SELECT name, age FROM users
 UNION
 SELECT name, age FROM users;
 ```
 
-### Skrypty `.s2j`
+### `.s2j` Scripts
 
-Plik `commands.s2j` może zawierać wiele instrukcji wykonywanych po kolei:
+The `commands.s2j` file can contain multiple statements executed in sequence:
 
 ```sql
 CREATE COLLECTION people FROM [{ id: 1, name: 'Ala', age: 20 }];
@@ -988,32 +988,32 @@ UPDATE people SET age = age + 1 WHERE id = 2;
 SELECT name, age FROM people ORDER BY id ASC;
 ```
 
-Uruchomienie z zapisem zmian:
+Running with saving changes:
 
 ```bash
 node src/index.js -f commands.s2j -d db.json --save
 ```
 ---
-## Testowanie
+## Testing
 
 ```bash
 node src/test.js
 ```
 
-Testy obejmują między innymi:
+The tests cover, among other things:
 
-- parsowanie `SELECT`, `CREATE`, `INSERT`, `UPDATE`, `DELETE`,
-- walidację kształtu bazy JSON,
-- wykonanie mutacji i zapytań,
-- uruchamianie skryptów `.s2j`,
-- zapis przez `--save`, `--output`, `--write-dataset`,
-- regresję dla wariantów `JOIN`, `NATURAL JOIN`, operacji zbiorowych, `LIKE`/`ILIKE`, `UNNEST`, funkcji `ARRAY_*`, agregatów grupowych, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`,
-- rozwijanie `path.*`, pełne wyświetlanie zagnieżdżonych wartości w tabelach i edytor wieloliniowy w TUI.
+- parsing `SELECT`, `CREATE`, `INSERT`, `UPDATE`, `DELETE`,
+- validation of JSON database shape,
+- executing mutations and queries,
+- running `.s2j` scripts,
+- saving via `--save`, `--output`, `--write-dataset`,
+- regression for `JOIN` variants, `NATURAL JOIN`, set operations, `LIKE`/`ILIKE`, `UNNEST`, `ARRAY_*` functions, group aggregates, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`,
+- expanding `path.*`, full display of nested values in tables, and multi-line editor in the TUI.
 ---
 
-## Uwagi implementacyjne
+## Implementation Notes
 
-- Projekt nie używa JSX ani bundlera.
-- Interfejs TUI jest napisany przez `React.createElement`.
-- Wygenerowane pliki ANTLR w `src/generated/` są ignorowane przez Git.
-- Po przełączeniu commita lub zmianie gramatyki trzeba uruchomić `npm run generate`, aby parser odpowiadał aktualnej gramatyce.
+- The project does not use JSX or a bundler.
+- The TUI interface is written using `React.createElement`.
+- Generated ANTLR files in `src/generated/` are ignored by Git.
+- After switching commits or changing the grammar, you must run `npm run generate` to keep the parser up to date with the current grammar.
