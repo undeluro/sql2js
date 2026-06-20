@@ -1,5 +1,9 @@
 # sql2js
 
+## Demo
+
+![sql2js TUI Demo](https://github.com/user-attachments/assets/77122469-71af-403a-aa67-e84925394ea2)
+
 ## Project Topic
 
 `sql2js` — an SQL-like query language compiler for JSON data, with an interactive TUI and support for a simple relational database model stored in a `.json` file.
